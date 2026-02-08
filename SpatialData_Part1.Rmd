@@ -1,0 +1,22 @@
+---
+title: "SpatialData_Part1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(janitor)
+library(here)
+library(haven)
+library(modelsummary)
+library(ggeffects)
+library(MASS)
+library(margins)
+library(scales)
+library(nnet)
+
+```
+
