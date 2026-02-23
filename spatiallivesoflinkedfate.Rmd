@@ -1,0 +1,679 @@
+---
+title: "spatiallivesoflinkedfate"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(janitor)
+library(here)
+library(haven)
+library(modelsummary)
+library(ggeffects)
+library(MASS)
+library(margins)
+library(scales)
+library(nnet)
+library(broom)
+```
+
+```{r Step 0: data ingestion, include=TRUE}
+cmps2024 <- read_dta(here("Data_Files","cmps2024_primaryadult_091025.dta"))
+civicorgdata <- read_csv(here("dataverse_files","mma_sc_demo.csv"))
+
+```
+
+```{r Step 1: Understand the Naive Relationship Between Neighborhood Trust and Linked Fate, include=TRUE}
+# Basic descriptive statistics
+summary(cmps2024$q226r3)  # Civic trust (1-10)
+summary(cmps2024$q56)     # Linked fate (1-4)
+
+# Check for missing values
+sum(is.na(cmps2024$q226r3))
+sum(is.na(cmps2024$q56))
+
+# Create a clean dataset removing missing values
+clean_data <- cmps2024 %>%
+  filter(!is.na(q226r3) & !is.na(q56))
+
+# Simple OLS regression model
+model <- lm(q56 ~ q226r3, data = clean_data)
+
+# Model summary
+summary(model)
+
+# Get tidy results
+tidy_results <- tidy(model)
+print(tidy_results)
+
+# Model fit statistics
+glance(model)
+
+# Optional: Create a scatterplot with regression line
+ggplot(clean_data, aes(x = q226r3, y = q56)) +
+  geom_jitter(alpha = 0.3, width = 0.2, height = 0.1) +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(
+    title = "Relationship between Civic Trust and Linked Fate",
+    x = "Civic Trust (Q226r3): Community Connection (1-10)",
+    y = "Linked Fate (Q56): Importance of Helping Others (1-4)",
+    caption = "Note: Lower Q56 values = Higher importance"
+  ) +
+  theme_minimal()
+
+# Check model assumptions
+par(mfrow = c(2, 2))
+plot(model)
+```
+
+```{r Step 2: Control for Potential Confounders, include=TRUE}
+# Add control variables to the model
+# Examine the race variable
+#table(cmps2024$s4)  # Frequency table
+#class(cmps2024$s4)  # Check variable type
+
+# Gender (s14)
+cmps2024$gender_factor <- factor(cmps2024$s14, 
+                                levels = 1:3,
+                                labels = c("Man", "Woman", "Non-binary"))
+
+# Income (hhinc)
+cmps2024$income_factor <- factor(cmps2024$hhinc, 
+                                levels = 1:5,
+                                labels = c("Less than $39k", "$40k-$59k", 
+                                          "$60k-$99k", "$100k+", "Don't know"))
+
+# Education (s17)
+cmps2024$education_factor <- factor(cmps2024$s17, 
+                                   levels = 1:7,
+                                   labels = c("Grades 1-8", "Some high school", 
+                                             "High school graduate or GED", "Some college",
+                                             "Associates, 2-year degree", "Bachelors, 4-year degree",
+                                             "Post-graduate degree"))
+
+# Age (agecat)
+cmps2024$age_factor <- factor(cmps2024$agecat, 
+                             levels = 1:5,
+                             labels = c("16-17 yrs", "18-29 yrs", "30-44 yrs", 
+                                       "45-64 yrs", "65+ yrs"))
+
+# Race (s4) - from previous code
+cmps2024$race_factor <- factor(cmps2024$s4, 
+                              levels = 1:7,
+                              labels = c("White, not Hispanic", "Hispanic or Latino", 
+                                        "Black or African American", "Asian American",
+                                        "American Indian/Native American", 
+                                        "Arab, Middle Eastern or North African",
+                                        "Native Hawaiian or Pacific Islander"))
+
+# Region
+cmps2024$region_factor <- factor(cmps2024$region, 
+                                levels = 1:4,
+                                labels = c("Midwest", "Northeast", "South", "West"))
+
+# Urbanicity (s24)
+cmps2024$urban_factor <- factor(cmps2024$s24, 
+                               levels = 1:5,
+                               labels = c("Large urban area", "Large suburb near large city",
+                                         "Small suburb near small town or city", 
+                                         "Small town or small city", "Rural area"))
+
+# Create clean dataset with all variables
+clean_data_full <- cmps2024 %>%
+  filter(!is.na(q226r3) & !is.na(q56) & 
+         !is.na(gender_factor) & !is.na(income_factor) & 
+         !is.na(education_factor) & !is.na(age_factor) & 
+         !is.na(race_factor) & !is.na(region_factor) & 
+         !is.na(urban_factor))
+
+cat("Sample size after removing missing values:", nrow(clean_data_full), "\n")
+
+# Run models for comparison
+# Original model
+model_original <- lm(q56 ~ q226r3, data = clean_data_full)
+
+# Model with all controls
+model_full <- lm(q56 ~ q226r3 + race_factor + gender_factor + income_factor + 
+                 education_factor + age_factor + region_factor + urban_factor, 
+                 data = clean_data_full)
+
+# Model summary
+summary(model_full)
+
+```
+
+```{r Re-running the model with different missingness parameters, include=TRUE}
+# Check missing data patterns
+cat("=== MISSING DATA ANALYSIS ===\n")
+cat("Original dataset size:", nrow(cmps2024), "\n")
+cat("q226r3 (civic trust) missing:", sum(is.na(cmps2024$q226r3)), "\n")
+cat("q56 (linked fate) missing:", sum(is.na(cmps2024$q56)), "\n")
+cat("s4 (race) missing:", sum(is.na(cmps2024$s4)), "\n")
+cat("s14 (gender) missing:", sum(is.na(cmps2024$s14)), "\n")
+cat("hhinc (income) missing:", sum(is.na(cmps2024$hhinc)), "\n")
+cat("s17 (education) missing:", sum(is.na(cmps2024$s17)), "\n")
+cat("agecat (age) missing:", sum(is.na(cmps2024$agecat)), "\n")
+cat("region missing:", sum(is.na(cmps2024$region)), "\n")
+cat("s24 (urbanicity) missing:", sum(is.na(cmps2024$s24)), "\n")
+
+# Create different datasets with varying inclusion criteria
+
+# Dataset 1: Only exclude if missing key variables (DV, IV, race)
+clean_data_race_only <- cmps2024 %>%
+  filter(!is.na(q226r3) & !is.na(q56) & !is.na(s4)) %>%
+  mutate(
+    race_factor = factor(s4, 
+                        levels = 1:7,
+                        labels = c("White, not Hispanic", "Hispanic or Latino", 
+                                  "Black or African American", "Asian American",
+                                  "American Indian/Native American", 
+                                  "Arab, Middle Eastern or North African",
+                                  "Native Hawaiian or Pacific Islander"))
+  )
+
+cat("\nSample size with race control only:", nrow(clean_data_race_only), "\n")
+
+# Dataset 2: Add gender (usually low missingness)
+clean_data_race_gender <- clean_data_race_only %>%
+  filter(!is.na(s14)) %>%
+  mutate(
+    gender_factor = factor(s14, levels = 1:3, labels = c("Man", "Woman", "Non-binary"))
+  )
+
+cat("Sample size with race + gender controls:", nrow(clean_data_race_gender), "\n")
+
+# Dataset 3: Add age (usually low missingness)
+clean_data_race_gender_age <- clean_data_race_gender %>%
+  filter(!is.na(agecat)) %>%
+  mutate(
+    age_factor = factor(agecat, levels = 1:5, 
+                       labels = c("16-17 yrs", "18-29 yrs", "30-44 yrs", 
+                                 "45-64 yrs", "65+ yrs"))
+  )
+
+cat("Sample size with race + gender + age controls:", nrow(clean_data_race_gender_age), "\n")
+
+# Run progressive models
+cat("\n=== MODEL COMPARISON ===\n")
+
+# Model 1: Original (no controls)
+model_original <- lm(q56 ~ q226r3, data = clean_data_race_only)
+cat("Model 1 (No controls):\n")
+cat("  N =", nrow(clean_data_race_only), "\n")
+cat("  q226r3 coef =", round(coef(model_original)[2], 5), "\n")
+cat("  q226r3 p-value =", format(summary(model_original)$coefficients[2,4], scientific = TRUE), "\n")
+cat("  R-squared =", round(summary(model_original)$r.squared, 4), "\n\n")
+
+# Model 2: Race control only
+model_race <- lm(q56 ~ q226r3 + race_factor, data = clean_data_race_only)
+cat("Model 2 (Race control):\n")
+cat("  N =", nrow(clean_data_race_only), "\n")
+cat("  q226r3 coef =", round(coef(model_race)[2], 5), "\n")
+cat("  q226r3 p-value =", format(summary(model_race)$coefficients[2,4], scientific = TRUE), "\n")
+cat("  R-squared =", round(summary(model_race)$r.squared, 4), "\n\n")
+
+# Model 3: Race + Gender
+model_race_gender <- lm(q56 ~ q226r3 + race_factor + gender_factor, 
+                        data = clean_data_race_gender)
+cat("Model 3 (Race + Gender):\n")
+cat("  N =", nrow(clean_data_race_gender), "\n")
+cat("  q226r3 coef =", round(coef(model_race_gender)[2], 5), "\n")
+cat("  q226r3 p-value =", format(summary(model_race_gender)$coefficients[2,4], scientific = TRUE), "\n")
+cat("  R-squared =", round(summary(model_race_gender)$r.squared, 4), "\n\n")
+
+# Model 4: Race + Gender + Age  
+model_race_gender_age <- lm(q56 ~ q226r3 + race_factor + gender_factor + age_factor, 
+                            data = clean_data_race_gender_age)
+cat("Model 4 (Race + Gender + Age):\n")
+cat("  N =", nrow(clean_data_race_gender_age), "\n")
+cat("  q226r3 coef =", round(coef(model_race_gender_age)[2], 5), "\n")
+cat("  q226r3 p-value =", format(summary(model_race_gender_age)$coefficients[2,4], scientific = TRUE), "\n")
+cat("  R-squared =", round(summary(model_race_gender_age)$r.squared, 4), "\n\n")
+
+# Display the most important model (race control with full sample)
+cat("=== RECOMMENDED MODEL: RACE CONTROL ONLY ===\n")
+summary(model_race)
+
+# Check how race affects the civic trust coefficient
+cat("\n=== COEFFICIENT CHANGE ANALYSIS ===\n")
+original_coef <- coef(model_original)[2]
+race_control_coef <- coef(model_race)[2]
+coef_change <- race_control_coef - original_coef
+percent_change <- (coef_change / original_coef) * 100
+
+cat("Original coefficient:", round(original_coef, 5), "\n")
+cat("With race control:", round(race_control_coef, 5), "\n")
+cat("Absolute change:", round(coef_change, 5), "\n")
+cat("Percent change:", round(percent_change, 1), "%\n")
+
+
+# Check the race dummy variables
+race_vars <- c("s3r1", "s3r2", "s3r3", "s3r4", "s3r5", "s3r6", "s3r7")
+race_labels <- c("White, not Hispanic", "Hispanic or Latino", "Black or African American", 
+                 "Asian American", "American Indian/Native American", 
+                 "Arab, Middle Eastern or North African", "Native Hawaiian or Pacific Islander")
+
+# Check missingness for each race variable
+cat("=== RACE DUMMY VARIABLES MISSINGNESS ===\n")
+for(i in 1:length(race_vars)) {
+  missing_count <- sum(is.na(cmps2024[[race_vars[i]]]))
+  cat(race_labels[i], ":", missing_count, "missing\n")
+}
+
+# Create race factor from dummy variables
+create_race_category <- function(data) {
+  race_factor <- character(nrow(data))
+  
+  for(i in 1:nrow(data)) {
+    # Find which race categories are checked (= 1)
+    checked_races <- c()
+    
+    for(j in 1:length(race_vars)) {
+      if(!is.na(data[i, race_vars[j]]) && data[i, race_vars[j]] == 1) {
+        checked_races <- c(checked_races, race_labels[j])
+      }
+    }
+    
+    # Assign race category
+    if(length(checked_races) == 0) {
+      race_factor[i] <- NA  # No race selected
+    } else if(length(checked_races) == 1) {
+      race_factor[i] <- checked_races[1]  # Single race
+    } else {
+      race_factor[i] <- "Multiple races"  # Multiple races selected
+    }
+  }
+  
+  return(factor(race_factor))
+}
+
+# Create the race factor
+cmps2024$race_factor_new <- create_race_category(cmps2024)
+
+# Check the distribution
+cat("\n=== NEW RACE FACTOR DISTRIBUTION ===\n")
+table(cmps2024$race_factor_new, useNA = "always")
+
+# Create clean dataset with new race variable
+clean_data_new <- cmps2024 %>%
+  filter(!is.na(q226r3) & !is.na(q56) & !is.na(race_factor_new))
+
+cat("\n=== SAMPLE SIZE COMPARISON ===\n")
+cat("Original complete case analysis: 174\n")
+cat("With new race variables:", nrow(clean_data_new), "\n")
+
+# Re-run the analysis
+# Model 1: No controls (with larger sample)
+model1_new <- lm(q56 ~ q226r3, data = clean_data_new)
+
+# Model 2: With race controls (with larger sample)
+model2_new <- lm(q56 ~ q226r3 + race_factor_new, data = clean_data_new)
+
+cat("\n=== UPDATED MODEL RESULTS ===\n")
+cat("Model 1 (No controls):\n")
+cat("  N =", nrow(clean_data_new), "\n")
+cat("  q226r3 coef =", round(coef(model1_new)[2], 5), "\n")
+cat("  q226r3 p-value =", format(summary(model1_new)$coefficients[2,4], scientific = TRUE), "\n")
+cat("  R-squared =", round(summary(model1_new)$r.squared, 4), "\n\n")
+
+cat("Model 2 (With race controls):\n")
+cat("  N =", nrow(clean_data_new), "\n")
+cat("  q226r3 coef =", round(coef(model2_new)[2], 5), "\n")
+cat("  q226r3 p-value =", format(summary(model2_new)$coefficients[2,4], scientific = TRUE), "\n")
+cat("  R-squared =", round(summary(model2_new)$r.squared, 4), "\n\n")
+
+# Full model summary for race controls
+cat("=== DETAILED MODEL WITH RACE CONTROLS ===\n")
+summary(model2_new)
+
+# Coefficient change analysis
+original_coef_new <- coef(model1_new)[2]
+race_control_coef_new <- coef(model2_new)[2]
+coef_change_new <- race_control_coef_new - original_coef_new
+percent_change_new <- (coef_change_new / original_coef_new) * 100
+
+cat("\n=== COEFFICIENT CHANGE ANALYSIS ===\n")
+cat("Original coefficient:", round(original_coef_new, 5), "\n")
+cat("With race control:", round(race_control_coef_new, 5), "\n")
+cat("Absolute change:", round(coef_change_new, 5), "\n")
+cat("Percent change:", round(percent_change_new, 1), "%\n")
+```
+
+```{r Re-run full model after re-specifying race variables, include=TRUE}
+# Convert all control variables to factors with proper labels
+cmps2024$gender_factor <- factor(cmps2024$s14, 
+                                levels = 1:3,
+                                labels = c("Man", "Woman", "Non-binary"))
+
+cmps2024$income_factor <- factor(cmps2024$hhinc, 
+                                levels = 1:5,
+                                labels = c("Less than $39k", "$40k-$59k", 
+                                          "$60k-$99k", "$100k+", "Don't know"))
+
+cmps2024$education_factor <- factor(cmps2024$s17, 
+                                   levels = 1:7,
+                                   labels = c("Grades 1-8", "Some high school", 
+                                             "High school graduate or GED", "Some college",
+                                             "Associates, 2-year degree", "Bachelors, 4-year degree",
+                                             "Post-graduate degree"))
+
+cmps2024$age_factor <- factor(cmps2024$agecat, 
+                             levels = 1:5,
+                             labels = c("16-17 yrs", "18-29 yrs", "30-44 yrs", 
+                                       "45-64 yrs", "65+ yrs"))
+
+cmps2024$region_factor <- factor(cmps2024$region, 
+                                levels = 1:4,
+                                labels = c("Midwest", "Northeast", "South", "West"))
+
+cmps2024$urban_factor <- factor(cmps2024$s24, 
+                               levels = 1:5,
+                               labels = c("Large urban area", "Large suburb near large city",
+                                         "Small suburb near small town or city", 
+                                         "Small town or small city", "Rural area"))
+
+# Check missingness for all control variables
+cat("=== CONTROL VARIABLES MISSINGNESS CHECK ===\n")
+cat("Gender missing:", sum(is.na(cmps2024$gender_factor)), "\n")
+cat("Income missing:", sum(is.na(cmps2024$income_factor)), "\n")
+cat("Education missing:", sum(is.na(cmps2024$education_factor)), "\n")
+cat("Age missing:", sum(is.na(cmps2024$age_factor)), "\n")
+cat("Region missing:", sum(is.na(cmps2024$region_factor)), "\n")
+cat("Urbanicity missing:", sum(is.na(cmps2024$urban_factor)), "\n")
+
+# Create datasets with progressive controls
+clean_data_basic <- cmps2024 %>%
+  filter(!is.na(q226r3) & !is.na(q56) & !is.na(race_factor_new))
+
+clean_data_full_controls <- clean_data_basic %>%
+  filter(!is.na(gender_factor) & !is.na(income_factor) & 
+         !is.na(education_factor) & !is.na(age_factor) & 
+         !is.na(region_factor) & !is.na(urban_factor))
+
+cat("\n=== SAMPLE SIZES ===\n")
+cat("Basic model (DV + IV + race):", nrow(clean_data_basic), "\n")
+cat("Full controls model:", nrow(clean_data_full_controls), "\n")
+
+# Run progressive models
+# Model 1: No controls
+model1_final <- lm(q56 ~ q226r3, data = clean_data_full_controls)
+
+# Model 2: Race only
+model2_final <- lm(q56 ~ q226r3 + race_factor_new, data = clean_data_full_controls)
+
+# Model 3: Full controls
+model3_final <- lm(q56 ~ q226r3 + race_factor_new + gender_factor + income_factor + 
+                   education_factor + age_factor + region_factor + urban_factor, 
+                   data = clean_data_full_controls)
+
+# Model comparison
+cat("\n=== PROGRESSIVE MODEL COMPARISON ===\n")
+
+models <- list("No controls" = model1_final, "Race only" = model2_final, "Full controls" = model3_final)
+
+for(i in 1:length(models)) {
+  model_name <- names(models)[i]
+  model <- models[[i]]
+  
+  cat(paste0("Model ", i, " (", model_name, "):\n"))
+  cat("  N =", nobs(model), "\n")
+  cat("  q226r3 coef =", round(coef(model)[2], 5), "\n")
+  cat("  q226r3 p-value =", format(summary(model)$coefficients[2,4], scientific = TRUE), "\n")
+  cat("  R-squared =", round(summary(model)$r.squared, 4), "\n")
+  cat("  Adj R-squared =", round(summary(model)$adj.r.squared, 4), "\n\n")
+}
+
+# Full model summary
+cat("=== FULL MODEL WITH ALL CONTROLS ===\n")
+summary(model3_final)
+
+# Coefficient stability analysis
+coef1 <- coef(model1_final)[2]
+coef2 <- coef(model2_final)[2] 
+coef3 <- coef(model3_final)[2]
+
+cat("\n=== CIVIC TRUST COEFFICIENT STABILITY ===\n")
+cat("No controls:", round(coef1, 5), "\n")
+cat("+ Race control:", round(coef2, 5), "(", round(((coef2-coef1)/coef1)*100, 1), "% change)\n")
+cat("+ All controls:", round(coef3, 5), "(", round(((coef3-coef1)/coef1)*100, 1), "% change)\n")
+
+# Extract just civic trust results from full model
+civic_results <- summary(model3_final)$coefficients["q226r3", ]
+ci_civic <- confint(model3_final, "q226r3")
+
+cat("\n=== FINAL CIVIC TRUST RESULTS ===\n")
+cat("Coefficient:", round(civic_results[1], 5), "\n")
+cat("Standard Error:", round(civic_results[2], 5), "\n")
+cat("t-value:", round(civic_results[3], 3), "\n")
+cat("p-value:", format(civic_results[4], scientific = TRUE), "\n")
+cat("95% CI: [", round(ci_civic[1], 5), ",", round(ci_civic[2], 5), "]\n")
+
+# Model diagnostics
+cat("\n=== MODEL DIAGNOSTICS ===\n")
+cat("F-statistic:", round(summary(model3_final)$fstatistic[1], 2), "\n")
+cat("F p-value:", format(pf(summary(model3_final)$fstatistic[1], 
+                           summary(model3_final)$fstatistic[2], 
+                           summary(model3_final)$fstatistic[3], 
+                           lower.tail = FALSE), scientific = TRUE), "\n")
+
+
+```
+
+```{r Re-run with religion, include=TRUE}
+# Define religion variables and labels
+religion_vars <- paste0("s13r", 1:17)
+religion_labels <- c("Catholic", "Protestant", "Other Christian", "Jewish", "Muslim", 
+                    "Hindu", "Buddhist", "Mormon/LDS", "Folk religion", "Daoist", 
+                    "Shamanism", "Ancestral religion", "Spiritual but not religious", 
+                    "Atheist", "Agnostic", "Other", "None")
+
+# Check missingness for religion variables
+cat("=== RELIGION DUMMY VARIABLES MISSINGNESS ===\n")
+for(i in 1:length(religion_vars)) {
+  if(religion_vars[i] %in% names(cmps2024)) {
+    missing_count <- sum(is.na(cmps2024[[religion_vars[i]]]))
+    cat(religion_labels[i], ":", missing_count, "missing\n")
+  } else {
+    cat(religion_labels[i], ": VARIABLE NOT FOUND\n")
+  }
+}
+
+# Create religion factor from dummy variables
+create_religion_category <- function(data) {
+  religion_factor <- character(nrow(data))
+  
+  for(i in 1:nrow(data)) {
+    # Find which religion categories are checked (= 1)
+    checked_religions <- c()
+    
+    for(j in 1:length(religion_vars)) {
+      if(religion_vars[j] %in% names(data)) {
+        if(!is.na(data[i, religion_vars[j]]) && data[i, religion_vars[j]] == 1) {
+          checked_religions <- c(checked_religions, religion_labels[j])
+        }
+      }
+    }
+    
+    # Assign religion category
+    if(length(checked_religions) == 0) {
+      religion_factor[i] <- NA  # No religion selected
+    } else if(length(checked_religions) == 1) {
+      religion_factor[i] <- checked_religions[1]  # Single religion
+    } else {
+      religion_factor[i] <- "Multiple religions"  # Multiple religions selected
+    }
+  }
+  
+  return(factor(religion_factor))
+}
+
+# Create the religion factor
+cmps2024$religion_factor <- create_religion_category(cmps2024)
+
+# Check the distribution
+cat("\n=== RELIGION FACTOR DISTRIBUTION ===\n")
+table(cmps2024$religion_factor, useNA = "always")
+
+# Create clean dataset with religion variable added
+clean_data_with_religion <- cmps2024 %>%
+  filter(!is.na(q226r3) & !is.na(q56) & !is.na(race_factor_new) & 
+         !is.na(gender_factor) & !is.na(income_factor) & 
+         !is.na(education_factor) & !is.na(age_factor) & 
+         !is.na(region_factor) & !is.na(urban_factor) & 
+         !is.na(religion_factor))
+
+cat("\n=== SAMPLE SIZE WITH RELIGION ===\n")
+cat("Previous full model sample:", nrow(clean_data_full_controls), "\n")
+cat("With religion added:", nrow(clean_data_with_religion), "\n")
+
+# Run models with religion
+# Model without religion (for comparison)
+model_no_religion <- lm(q56 ~ q226r3 + race_factor_new + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor, 
+                        data = clean_data_with_religion)
+
+# Model with religion
+model_with_religion <- lm(q56 ~ q226r3 + race_factor_new + gender_factor + income_factor + 
+                          education_factor + age_factor + region_factor + urban_factor + 
+                          religion_factor, 
+                          data = clean_data_with_religion)
+
+# Compare models
+cat("\n=== MODEL COMPARISON WITH RELIGION ===\n")
+cat("Without religion:\n")
+cat("  N =", nobs(model_no_religion), "\n")
+cat("  q226r3 coef =", round(coef(model_no_religion)[2], 5), "\n")
+cat("  q226r3 p-value =", format(summary(model_no_religion)$coefficients[2,4], scientific = TRUE), "\n")
+cat("  R-squared =", round(summary(model_no_religion)$r.squared, 4), "\n")
+cat("  Adj R-squared =", round(summary(model_no_religion)$adj.r.squared, 4), "\n\n")
+
+cat("With religion:\n")
+cat("  N =", nobs(model_with_religion), "\n")
+cat("  q226r3 coef =", round(coef(model_with_religion)[2], 5), "\n")
+cat("  q226r3 p-value =", format(summary(model_with_religion)$coefficients[2,4], scientific = TRUE), "\n")
+cat("  R-squared =", round(summary(model_with_religion)$r.squared, 4), "\n")
+cat("  Adj R-squared =", round(summary(model_with_religion)$adj.r.squared, 4), "\n\n")
+
+# Full model summary with religion
+cat("=== FULL MODEL WITH RELIGION CONTROLS ===\n")
+summary(model_with_religion)
+
+# Civic trust coefficient stability
+coef_no_religion <- coef(model_no_religion)[2]
+coef_with_religion <- coef(model_with_religion)[2]
+religion_change <- ((coef_with_religion - coef_no_religion) / coef_no_religion) * 100
+
+cat("\n=== RELIGION IMPACT ON CIVIC TRUST COEFFICIENT ===\n")
+cat("Without religion:", round(coef_no_religion, 5), "\n")
+cat("With religion:", round(coef_with_religion, 5), "\n")
+cat("Percent change:", round(religion_change, 1), "%\n")
+
+# Final civic trust results with all controls including religion
+civic_final <- summary(model_with_religion)$coefficients["q226r3", ]
+ci_final <- confint(model_with_religion, "q226r3")
+
+cat("\n=== FINAL CIVIC TRUST RESULTS (ALL CONTROLS + RELIGION) ===\n")
+cat("Coefficient:", round(civic_final[1], 5), "\n")
+cat("Standard Error:", round(civic_final[2], 5), "\n")
+cat("t-value:", round(civic_final[3], 3), "\n")
+cat("p-value:", format(civic_final[4], scientific = TRUE), "\n")
+cat("95% CI: [", round(ci_final[1], 5), ",", round(ci_final[2], 5), "]\n")
+
+
+```
+
+```{r Regionxurbanicity regression, include=TRUE}
+# Run model with region × urbanicity interaction
+model_with_geo_interaction <- lm(q56 ~ q226r3 + race_factor_new + gender_factor + income_factor + 
+                                 education_factor + age_factor + religion_factor +
+                                 region_factor * urban_factor, 
+                                 data = clean_data_with_religion)
+
+# Compare models
+cat("=== MODEL COMPARISON: GEOGRAPHY INTERACTION ===\n")
+cat("Without interaction:\n")
+cat("  R-squared =", round(summary(model_with_religion)$r.squared, 4), "\n")
+cat("  Adj R-squared =", round(summary(model_with_religion)$adj.r.squared, 4), "\n")
+cat("  AIC =", round(AIC(model_with_religion), 1), "\n\n")
+
+cat("With region × urbanicity interaction:\n")
+cat("  R-squared =", round(summary(model_with_geo_interaction)$r.squared, 4), "\n")
+cat("  Adj R-squared =", round(summary(model_with_geo_interaction)$adj.r.squared, 4), "\n")
+cat("  AIC =", round(AIC(model_with_geo_interaction), 1), "\n\n")
+
+# Civic trust coefficient comparison
+coef_no_interaction <- coef(model_with_religion)[2]
+coef_with_interaction <- coef(model_with_geo_interaction)[2]
+geo_change <- ((coef_with_interaction - coef_no_interaction) / coef_no_interaction) * 100
+
+cat("=== CIVIC TRUST COEFFICIENT WITH GEOGRAPHY INTERACTION ===\n")
+cat("Without interaction:", round(coef_no_interaction, 5), "\n")
+cat("With interaction:", round(coef_with_interaction, 5), "\n")
+cat("Percent change:", round(geo_change, 1), "%\n\n")
+
+# Full model summary
+cat("=== FULL MODEL WITH REGION × URBANICITY INTERACTION ===\n")
+summary(model_with_geo_interaction)
+
+# Test if the interaction significantly improves the model
+anova_test <- anova(model_with_religion, model_with_geo_interaction)
+cat("\n=== ANOVA TEST FOR INTERACTION SIGNIFICANCE ===\n")
+print(anova_test)
+
+# Extract and display significant interaction terms
+interaction_coefs <- summary(model_with_geo_interaction)$coefficients
+interaction_rows <- grep("region_factor.*:.*urban_factor", rownames(interaction_coefs))
+
+if(length(interaction_rows) > 0) {
+  cat("\n=== SIGNIFICANT INTERACTION TERMS ===\n")
+  for(i in interaction_rows) {
+    coef_name <- rownames(interaction_coefs)[i]
+    coef_val <- interaction_coefs[i, 1]
+    p_val <- interaction_coefs[i, 4]
+    
+    if(p_val < 0.1) {  # Show marginally significant interactions
+      cat(coef_name, ":\n")
+      cat("  Coefficient:", round(coef_val, 4), "\n")
+      cat("  p-value:", format(p_val, digits = 3), "\n")
+      if(p_val < 0.05) cat("  *** SIGNIFICANT ***\n")
+      else if(p_val < 0.1) cat("  * MARGINALLY SIGNIFICANT *\n")
+      cat("\n")
+    }
+  }
+}
+
+# Create a summary table of region-urbanicity combinations
+# First, let's see the sample sizes for each combination
+geo_table <- clean_data_with_religion %>%
+  group_by(region_factor, urban_factor) %>%
+  summarise(
+    n = n(),
+    mean_linked_fate = round(mean(q56), 3),
+    mean_civic_trust = round(mean(q226r3), 3),
+    .groups = 'drop'
+  ) %>%
+  arrange(region_factor, urban_factor)
+
+cat("\n=== REGION × URBANICITY DESCRIPTIVE STATISTICS ===\n")
+print(geo_table)
+
+# Final civic trust results with geography interaction
+civic_geo_final <- summary(model_with_geo_interaction)$coefficients["q226r3", ]
+ci_geo_final <- confint(model_with_geo_interaction, "q226r3")
+
+cat("\n=== FINAL CIVIC TRUST RESULTS (WITH GEOGRAPHY INTERACTION) ===\n")
+cat("Coefficient:", round(civic_geo_final[1], 5), "\n")
+cat("Standard Error:", round(civic_geo_final[2], 5), "\n")
+cat("t-value:", round(civic_geo_final[3], 3), "\n")
+cat("p-value:", format(civic_geo_final[4], scientific = TRUE), "\n")
+cat("95% CI: [", round(ci_geo_final[1], 5), ",", round(ci_geo_final[2], 5), "]\n")
+```
+
+
+
+
+
+
