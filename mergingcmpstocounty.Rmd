@@ -1,0 +1,1217 @@
+---
+title: "mergingcmpstocounty"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(janitor)
+library(here)
+library(haven)
+library(modelsummary)
+library(ggeffects)
+library(MASS)
+library(margins)
+library(scales)
+library(nnet)
+library(broom)
+library(tigris)
+options(tigris_use_cache = TRUE)  # Cache tigris data for faster subsequent runs
+# Suppress tigris messages
+options(tigris_quiet = TRUE)
+```
+
+```{r Step 0: data ingestion, include=TRUE}
+cmps2024 <- read_dta(here("Data_Files","cmps2024_primaryadult_091025.dta"))
+civicorgdata <- read_csv(here("dataverse_files","mma_sc_demo.csv"))
+
+```
+
+```{r Step 1: Create lookup tables for county names, include=TRUE}
+# Create lookup tables for each state
+county_lookups <- list(
+  # Alabama (67 counties)
+  Alabama = c(
+    "1" = "Autauga", "2" = "Baldwin", "3" = "Barbour", "4" = "Bibb", 
+    "5" = "Blount", "6" = "Bullock", "7" = "Butler", "8" = "Calhoun", 
+    "9" = "Chambers", "10" = "Cherokee", "11" = "Chilton", "12" = "Choctaw", 
+    "13" = "Clarke", "14" = "Clay", "15" = "Cleburne", "16" = "Coffee", 
+    "17" = "Colbert", "18" = "Conecuh", "19" = "Coosa", "20" = "Covington", 
+    "21" = "Crenshaw", "22" = "Cullman", "23" = "Dale", "24" = "Dallas", 
+    "25" = "DeKalb", "26" = "Elmore", "27" = "Escambia", "28" = "Etowah", 
+    "29" = "Fayette", "30" = "Franklin", "31" = "Geneva", "32" = "Greene", 
+    "33" = "Hale", "34" = "Henry", "35" = "Houston", "36" = "Jackson", 
+    "37" = "Jefferson", "38" = "Lamar", "39" = "Lauderdale", "40" = "Lawrence", 
+    "41" = "Lee", "42" = "Limestone", "43" = "Lowndes", "44" = "Macon", 
+    "45" = "Madison", "46" = "Marengo", "47" = "Marion", "48" = "Marshall", 
+    "49" = "Mobile", "50" = "Monroe", "51" = "Montgomery", "52" = "Morgan", 
+    "53" = "Perry", "54" = "Pickens", "55" = "Pike", "56" = "Randolph", 
+    "57" = "Russell", "58" = "St. Clair", "59" = "Shelby", "60" = "Sumter", 
+    "61" = "Talladega", "62" = "Tallapoosa", "63" = "Tuscaloosa", "64" = "Walker", 
+    "65" = "Washington", "66" = "Wilcox", "67" = "Winston"
+  ),
+  
+# Alaska (27 boroughs/census areas)
+  Alaska = c(
+    "1" = "Aleutians East", "2" = "Aleutians West", "3" = "Anchorage", 
+    "4" = "Bethel", "5" = "Bristol Bay", "6" = "Denali", 
+    "7" = "Dillingham", "8" = "Fairbanks North Star", "9" = "Haines", 
+    "10" = "Juneau", "11" = "Kenai Peninsula", "12" = "Ketchikan Gateway", 
+    "13" = "Kodiak Island", "14" = "Lake and Peninsula", "15" = "Matanuska-Susitna", 
+    "16" = "Nome", "17" = "North Slope", "18" = "Northwest Arctic", 
+    "19" = "Prince of Wales-Outer Ketchikan", "20" = "Sitka", 
+    "21" = "Skagway-Hoonah-Angoon", "22" = "Southeast Fairbanks", 
+    "23" = "Valdez-Cordova", "24" = "Wade Hampton", "25" = "Wrangell-Petersburg", 
+    "26" = "Yakutat", "27" = "Yukon-Koyukuk"
+  ),
+  
+  # Arkansas (75 counties)
+  Arkansas = c(
+    "1" = "Arkansas", "2" = "Ashley", "3" = "Baxter", "4" = "Benton", 
+    "5" = "Boone", "6" = "Bradley", "7" = "Calhoun", "8" = "Carroll", 
+    "9" = "Chicot", "10" = "Clark", "11" = "Clay", "12" = "Cleburne", 
+    "13" = "Cleveland", "14" = "Columbia", "15" = "Conway", "16" = "Craighead", 
+    "17" = "Crawford", "18" = "Crittenden", "19" = "Cross", "20" = "Dallas", 
+    "21" = "Desha", "22" = "Drew", "23" = "Faulkner", "24" = "Franklin", 
+    "25" = "Fulton", "26" = "Garland", "27" = "Grant", "28" = "Greene", 
+    "29" = "Hempstead", "30" = "Hot Spring", "31" = "Howard", "32" = "Independence", 
+    "33" = "Izard", "34" = "Jackson", "35" = "Jefferson", "36" = "Johnson", 
+    "37" = "Lafayette", "38" = "Lawrence", "39" = "Lee", "40" = "Lincoln", 
+    "41" = "Little River", "42" = "Logan", "43" = "Lonoke", "44" = "Madison", 
+    "45" = "Marion", "46" = "Miller", "47" = "Mississippi", "48" = "Monroe", 
+    "49" = "Montgomery", "50" = "Nevada", "51" = "Newton", "52" = "Ouachita", 
+    "53" = "Perry", "54" = "Phillips", "55" = "Pike", "56" = "Poinsett", 
+    "57" = "Polk", "58" = "Pope", "59" = "Prairie", "60" = "Pulaski", 
+    "61" = "Randolph", "62" = "St. Francis", "63" = "Saline", "64" = "Scott", 
+    "65" = "Searcy", "66" = "Sebastian", "67" = "Sevier", "68" = "Sharp", 
+    "69" = "Stone", "70" = "Union", "71" = "Van Buren", "72" = "Washington", 
+    "73" = "White", "74" = "Woodruff", "75" = "Yell"
+  ),
+  
+  # California (58 counties)
+  California = c(
+    "1" = "Alameda", "2" = "Alpine", "3" = "Amador", "4" = "Butte", 
+    "5" = "Calaveras", "6" = "Colusa", "7" = "Contra Costa", "8" = "Del Norte", 
+    "9" = "El Dorado", "10" = "Fresno", "11" = "Glenn", "12" = "Humboldt", 
+    "13" = "Imperial", "14" = "Inyo", "15" = "Kern", "16" = "Kings", 
+    "17" = "Lake", "18" = "Lassen", "19" = "Los Angeles", "20" = "Madera", 
+    "21" = "Marin", "22" = "Mariposa", "23" = "Mendocino", "24" = "Merced", 
+    "25" = "Modoc", "26" = "Mono", "27" = "Monterey", "28" = "Napa", 
+    "29" = "Nevada", "30" = "Orange", "31" = "Placer", "32" = "Plumas", 
+    "33" = "Riverside", "34" = "Sacramento", "35" = "San Benito", "36" = "San Bernardino", 
+    "37" = "San Diego", "38" = "San Francisco", "39" = "San Joaquin", "40" = "San Luis Obispo", 
+    "41" = "San Mateo", "42" = "Santa Barbara", "43" = "Santa Clara", "44" = "Santa Cruz", 
+    "45" = "Shasta", "46" = "Sierra", "47" = "Siskiyou", "48" = "Solano", 
+    "49" = "Sonoma", "50" = "Stanislaus", "51" = "Sutter", "52" = "Tehama", 
+    "53" = "Trinity", "54" = "Tulare", "55" = "Tuolumne", "56" = "Ventura", 
+    "57" = "Yolo", "58" = "Yuba"
+  ),
+  
+ # Colorado (64 counties)
+  Colorado = c(
+    "1" = "Adams", "2" = "Alamosa", "3" = "Arapahoe", "4" = "Archuleta", 
+    "5" = "Baca", "6" = "Bent", "7" = "Boulder", "8" = "Broomfield", 
+    "9" = "Chaffee", "10" = "Cheyenne", "11" = "Clear Creek", "12" = "Conejos", 
+    "13" = "Costilla", "14" = "Crowley", "15" = "Custer", "16" = "Delta", 
+    "17" = "Denver", "18" = "Dolores", "19" = "Douglas", "20" = "Eagle", 
+    "21" = "Elbert", "22" = "El Paso", "23" = "Fremont", "24" = "Garfield", 
+    "25" = "Gilpin", "26" = "Grand", "27" = "Gunnison", "28" = "Hinsdale", 
+    "29" = "Huerfano", "30" = "Jackson", "31" = "Jefferson", "32" = "Kiowa", 
+    "33" = "Kit Carson", "34" = "Lake", "35" = "La Plata", "36" = "Larimer", 
+    "37" = "Las Animas", "38" = "Lincoln", "39" = "Logan", "40" = "Mesa", 
+    "41" = "Mineral", "42" = "Moffat", "43" = "Montezuma", "44" = "Montrose", 
+    "45" = "Morgan", "46" = "Otero", "47" = "Ouray", "48" = "Park", 
+    "49" = "Phillips", "50" = "Pitkin", "51" = "Prowers", "52" = "Pueblo", 
+    "53" = "Rio Blanco", "54" = "Rio Grande", "55" = "Routt", "56" = "Saguache", 
+    "57" = "San Juan", "58" = "San Miguel", "59" = "Sedgwick", "60" = "Summit", 
+    "61" = "Teller", "62" = "Washington", "63" = "Weld", "64" = "Yuma"
+  ),
+
+ # Connecticut (8 counties)
+  Connecticut = c(
+    "1" = "Fairfield", "2" = "Hartford", "3" = "Litchfield", "4" = "Middlesex", 
+    "5" = "New Haven", "6" = "New London", "7" = "Tolland", "8" = "Windham"
+  ),
+  
+  # Delaware (3 counties)
+  Delaware = c(
+    "1" = "Kent", "2" = "New Castle", "3" = "Sussex"
+  ),
+  
+  # Florida (67 counties)
+  Florida = c(
+    "1" = "Alachua", "2" = "Baker", "3" = "Bay", "4" = "Bradford", 
+    "5" = "Brevard", "6" = "Broward", "7" = "Calhoun", "8" = "Charlotte", 
+    "9" = "Citrus", "10" = "Clay", "11" = "Collier", "12" = "Columbia", 
+    "13" = "DeSoto", "14" = "Dixie", "15" = "Duval", "16" = "Escambia", 
+    "17" = "Flagler", "18" = "Franklin", "19" = "Gadsden", "20" = "Gilchrist", 
+    "21" = "Glades", "22" = "Gulf", "23" = "Hamilton", "24" = "Hardee", 
+    "25" = "Hendry", "26" = "Hernando", "27" = "Highlands", "28" = "Hillsborough", 
+    "29" = "Holmes", "30" = "Indian River", "31" = "Jackson", "32" = "Jefferson", 
+    "33" = "Lafayette", "34" = "Lake", "35" = "Lee", "36" = "Leon", 
+    "37" = "Levy", "38" = "Liberty", "39" = "Madison", "40" = "Manatee", 
+    "41" = "Marion", "42" = "Martin", "43" = "Miami-Dade", "44" = "Monroe", 
+    "45" = "Nassau", "46" = "Okaloosa", "47" = "Okeechobee", "48" = "Orange", 
+    "49" = "Osceola", "50" = "Palm Beach", "51" = "Pasco", "52" = "Pinellas", 
+    "53" = "Polk", "54" = "Putnam", "55" = "St. Johns", "56" = "St. Lucie", 
+    "57" = "Santa Rosa", "58" = "Sarasota", "59" = "Seminole", "60" = "Sumter", 
+    "61" = "Suwannee", "62" = "Taylor", "63" = "Union", "64" = "Volusia", 
+    "65" = "Wakulla", "66" = "Walton", "67" = "Washington"
+  ),
+
+  # Georgia (159 counties)
+  Georgia = c(
+    "1" = "Appling", "2" = "Atkinson", "3" = "Bacon", "4" = "Baker", 
+    "5" = "Baldwin", "6" = "Banks", "7" = "Barrow", "8" = "Bartow", 
+    "9" = "Ben Hill", "10" = "Berrien", "11" = "Bibb", "12" = "Bleckley", 
+    "13" = "Brantley", "14" = "Brooks", "15" = "Bryan", "16" = "Bulloch", 
+    "17" = "Burke", "18" = "Butts", "19" = "Calhoun", "20" = "Camden", 
+    "21" = "Candler", "22" = "Carroll", "23" = "Catoosa", "24" = "Charlton", 
+    "25" = "Chatham", "26" = "Chattahoochee", "27" = "Chattooga", "28" = "Cherokee", 
+    "29" = "Clarke", "30" = "Clay", "31" = "Clayton", "32" = "Clinch", 
+    "33" = "Cobb", "34" = "Coffee", "35" = "Colquitt", "36" = "Columbia", 
+    "37" = "Cook", "38" = "Coweta", "39" = "Crawford", "40" = "Crisp", 
+    "41" = "Dade", "42" = "Dawson", "43" = "Decatur", "44" = "DeKalb", 
+    "45" = "Dodge", "46" = "Dooly", "47" = "Dougherty", "48" = "Douglas", 
+    "49" = "Early", "50" = "Echols", "51" = "Effingham", "52" = "Elbert", 
+    "53" = "Emanuel", "54" = "Evans", "55" = "Fannin", "56" = "Fayette", 
+    "57" = "Floyd", "58" = "Forsyth", "59" = "Franklin", "60" = "Fulton", 
+    "61" = "Gilmer", "62" = "Glascock", "63" = "Glynn", "64" = "Gordon", 
+    "65" = "Grady", "66" = "Greene", "67" = "Gwinnett", "68" = "Habersham", 
+    "69" = "Hall", "70" = "Hancock", "71" = "Haralson", "72" = "Harris", 
+    "73" = "Hart", "74" = "Heard", "75" = "Henry", "76" = "Houston", 
+    "77" = "Irwin", "78" = "Jackson", "79" = "Jasper", "80" = "Jeff Davis", 
+    "81" = "Jefferson", "82" = "Jenkins", "83" = "Johnson", "84" = "Jones", 
+    "85" = "Lamar", "86" = "Lanier", "87" = "Laurens", "88" = "Lee", 
+    "89" = "Liberty", "90" = "Lincoln", "91" = "Long", "92" = "Lowndes", 
+    "93" = "Lumpkin", "94" = "Macon", "95" = "Madison", "96" = "Marion", 
+    "97" = "McDuffie", "98" = "McIntosh", "99" = "Meriwether", "100" = "Miller", 
+    "101" = "Mitchell", "102" = "Monroe", "103" = "Montgomery", "104" = "Morgan", 
+    "105" = "Murray", "106" = "Muscogee", "107" = "Newton", "108" = "Oconee", 
+    "109" = "Oglethorpe", "110" = "Paulding", "111" = "Peach", "112" = "Pickens", 
+    "113" = "Pierce", "114" = "Pike", "115" = "Polk", "116" = "Pulaski", 
+    "117" = "Putnam", "118" = "Quitman", "119" = "Rabun", "120" = "Randolph", 
+    "121" = "Richmond", "122" = "Rockdale", "123" = "Schley", "124" = "Screven", 
+    "125" = "Seminole", "126" = "Spalding", "127" = "Stephens", "128" = "Stewart", 
+    "129" = "Sumter", "130" = "Talbot", "131" = "Taliaferro", "132" = "Tattnall", 
+    "133" = "Taylor", "134" = "Telfair", "135" = "Terrell", "136" = "Thomas", 
+    "137" = "Tift", "138" = "Toombs", "139" = "Towns", "140" = "Treutlen", 
+    "141" = "Troup", "142" = "Turner", "143" = "Twiggs", "144" = "Union", 
+    "145" = "Upson", "146" = "Walker", "147" = "Walton", "148" = "Ware", 
+    "149" = "Warren", "150" = "Washington", "151" = "Wayne", "152" = "Webster", 
+    "153" = "Wheeler", "154" = "White", "155" = "Whitfield", "156" = "Wilcox", 
+    "157" = "Wilkes", "158" = "Wilkinson", "159" = "Worth"
+  ),
+  
+  # Hawaii (4 counties)
+  Hawaii = c(
+    "1" = "Hawaii", "2" = "Honolulu", "3" = "Kauai", "4" = "Maui"
+  ),
+
+  # Idaho (44 counties)
+  Idaho = c(
+    "1" = "Ada", "2" = "Adams", "3" = "Bannock", "4" = "Bear Lake", 
+    "5" = "Benewah", "6" = "Bingham", "7" = "Blaine", "8" = "Boise", 
+    "9" = "Bonner", "10" = "Bonneville", "11" = "Boundary", "12" = "Butte", 
+    "13" = "Camas", "14" = "Canyon", "15" = "Caribou", "16" = "Cassia", 
+    "17" = "Clark", "18" = "Clearwater", "19" = "Custer", "20" = "Elmore", 
+    "21" = "Franklin", "22" = "Fremont", "23" = "Gem", "24" = "Gooding", 
+    "25" = "Idaho", "26" = "Jefferson", "27" = "Jerome", "28" = "Kootenai", 
+    "29" = "Latah", "30" = "Lemhi", "31" = "Lewis", "32" = "Lincoln", 
+    "33" = "Madison", "34" = "Minidoka", "35" = "Nez Perce", "36" = "Oneida", 
+    "37" = "Owyhee", "38" = "Payette", "39" = "Power", "40" = "Shoshone", 
+    "41" = "Teton", "42" = "Twin Falls", "43" = "Valley", "44" = "Washington"
+  ),
+  
+  # Illinois (102 counties)
+  Illinois = c(
+    "1" = "Adams", "2" = "Alexander", "3" = "Bond", "4" = "Boone", 
+    "5" = "Brown", "6" = "Bureau", "7" = "Calhoun", "8" = "Carroll", 
+    "9" = "Cass", "10" = "Champaign", "11" = "Christian", "12" = "Clark", 
+    "13" = "Clay", "14" = "Clinton", "15" = "Coles", "16" = "Cook", 
+    "17" = "Crawford", "18" = "Cumberland", "19" = "DeKalb", "20" = "DeWitt", 
+    "21" = "Douglas", "22" = "DuPage", "23" = "Edgar", "24" = "Edwards", 
+    "25" = "Effingham", "26" = "Fayette", "27" = "Ford", "28" = "Franklin", 
+    "29" = "Fulton", "30" = "Gallatin", "31" = "Greene", "32" = "Grundy", 
+    "33" = "Hamilton", "34" = "Hancock", "35" = "Hardin", "36" = "Henderson", 
+    "37" = "Henry", "38" = "Iroquois", "39" = "Jackson", "40" = "Jasper", 
+    "41" = "Jefferson", "42" = "Jersey", "43" = "Jo Daviess", "44" = "Johnson", 
+    "45" = "Kane", "46" = "Kankakee", "47" = "Kendall", "48" = "Knox", 
+    "49" = "Lake", "50" = "LaSalle", "51" = "Lawrence", "52" = "Lee", 
+    "53" = "Livingston", "54" = "Logan", "55" = "Macon", "56" = "Macoupin", 
+    "57" = "Madison", "58" = "Marion", "59" = "Marshall", "60" = "Mason", 
+    "61" = "Massac", "62" = "McDonough", "63" = "McHenry", "64" = "McLean", 
+    "65" = "Menard", "66" = "Mercer", "67" = "Monroe", "68" = "Montgomery", 
+    "69" = "Morgan", "70" = "Moultrie", "71" = "Ogle", "72" = "Peoria", 
+    "73" = "Perry", "74" = "Piatt", "75" = "Pike", "76" = "Pope", 
+    "77" = "Pulaski", "78" = "Putnam", "79" = "Randolph", "80" = "Richland", 
+    "81" = "Rock Island", "82" = "St. Clair", "83" = "Saline", "84" = "Sangamon", 
+    "85" = "Schuyler", "86" = "Scott", "87" = "Shelby", "88" = "Stark", 
+    "89" = "Stephenson", "90" = "Tazewell", "91" = "Union", "92" = "Vermilion", 
+    "93" = "Wabash", "94" = "Warren", "95" = "Washington", "96" = "Wayne", 
+    "97" = "White", "98" = "Whiteside", "99" = "Will", "100" = "Williamson", 
+    "101" = "Winnebago", "102" = "Woodford"
+  ),
+
+  # Indiana (92 counties)
+  Indiana = c(
+    "1" = "Adams", "2" = "Allen", "3" = "Bartholomew", "4" = "Benton", 
+    "5" = "Blackford", "6" = "Boone", "7" = "Brown", "8" = "Carroll", 
+    "9" = "Cass", "10" = "Clark", "11" = "Clay", "12" = "Clinton", 
+    "13" = "Crawford", "14" = "Daviess", "15" = "Dearborn", "16" = "Decatur", 
+    "17" = "DeKalb", "18" = "Delaware", "19" = "Dubois", "20" = "Elkhart", 
+    "21" = "Fayette", "22" = "Floyd", "23" = "Fountain", "24" = "Franklin", 
+    "25" = "Fulton", "26" = "Gibson", "27" = "Grant", "28" = "Greene", 
+    "29" = "Hamilton", "30" = "Hancock", "31" = "Harrison", "32" = "Hendricks", 
+    "33" = "Henry", "34" = "Howard", "35" = "Huntington", "36" = "Jackson", 
+    "37" = "Jasper", "38" = "Jay", "39" = "Jefferson", "40" = "Jennings", 
+    "41" = "Johnson", "42" = "Knox", "43" = "Kosciusko", "44" = "LaGrange", 
+    "45" = "Lake", "46" = "LaPorte", "47" = "Lawrence", "48" = "Madison", 
+    "49" = "Marion", "50" = "Marshall", "51" = "Martin", "52" = "Miami", 
+    "53" = "Monroe", "54" = "Montgomery", "55" = "Morgan", "56" = "Newton", 
+    "57" = "Noble", "58" = "Ohio", "59" = "Orange", "60" = "Owen", 
+    "61" = "Parke", "62" = "Perry", "63" = "Pike", "64" = "Porter", 
+    "65" = "Posey", "66" = "Pulaski", "67" = "Putnam", "68" = "Randolph", 
+    "69" = "Ripley", "70" = "Rush", "71" = "St. Joseph", "72" = "Scott", 
+    "73" = "Shelby", "74" = "Spencer", "75" = "Starke", "76" = "Steuben", 
+    "77" = "Sullivan", "78" = "Switzerland", "79" = "Tippecanoe", "80" = "Tipton", 
+    "81" = "Union", "82" = "Vanderburgh", "83" = "Vermillion", "84" = "Vigo", 
+    "85" = "Wabash", "86" = "Warren", "87" = "Warrick", "88" = "Washington", 
+    "89" = "Wayne", "90" = "Wells", "91" = "White", "92" = "Whitley"
+  ),
+  
+  # Iowa (99 counties)
+  Iowa = c(
+    "1" = "Adair", "2" = "Adams", "3" = "Allamakee", "4" = "Appanoose", 
+    "5" = "Audubon", "6" = "Benton", "7" = "Black Hawk", "8" = "Boone", 
+    "9" = "Bremer", "10" = "Buchanan", "11" = "Buena Vista", "12" = "Butler", 
+    "13" = "Calhoun", "14" = "Carroll", "15" = "Cass", "16" = "Cedar", 
+    "17" = "Cerro Gordo", "18" = "Cherokee", "19" = "Chickasaw", "20" = "Clarke", 
+    "21" = "Clay", "22" = "Clayton", "23" = "Clinton", "24" = "Crawford", 
+    "25" = "Dallas", "26" = "Davis", "27" = "Decatur", "28" = "Delaware", 
+    "29" = "Des Moines", "30" = "Dickinson", "31" = "Dubuque", "32" = "Emmet", 
+    "33" = "Fayette", "34" = "Floyd", "35" = "Franklin", "36" = "Fremont", 
+    "37" = "Greene", "38" = "Grundy", "39" = "Guthrie", "40" = "Hamilton", 
+    "41" = "Hancock", "42" = "Hardin", "43" = "Harrison", "44" = "Henry", 
+    "45" = "Howard", "46" = "Humboldt", "47" = "Ida", "48" = "Iowa", 
+    "49" = "Jackson", "50" = "Jasper", "51" = "Jefferson", "52" = "Johnson", 
+    "53" = "Jones", "54" = "Keokuk", "55" = "Kossuth", "56" = "Lee", 
+    "57" = "Linn", "58" = "Louisa", "59" = "Lucas", "60" = "Lyon", 
+    "61" = "Madison", "62" = "Mahaska", "63" = "Marion", "64" = "Marshall", 
+    "65" = "Mills", "66" = "Mitchell", "67" = "Monona", "68" = "Monroe", 
+    "69" = "Montgomery", "70" = "Muscatine", "71" = "O'Brien", "72" = "Osceola", 
+    "73" = "Page", "74" = "Palo Alto", "75" = "Plymouth", "76" = "Pocahontas", 
+    "77" = "Polk", "78" = "Pottawattamie", "79" = "Poweshiek", "80" = "Ringgold", 
+    "81" = "Sac", "82" = "Scott", "83" = "Shelby", "84" = "Sioux", 
+    "85" = "Story", "86" = "Tama", "87" = "Taylor", "88" = "Union", 
+    "89" = "Van Buren", "90" = "Wapello", "91" = "Warren", "92" = "Washington", 
+    "93" = "Wayne", "94" = "Webster", "95" = "Winnebago", "96" = "Winneshiek", 
+    "97" = "Woodbury", "98" = "Worth", "99" = "Wright"
+  ),
+
+ # Kansas (105 counties)
+  Kansas = c(
+    "1" = "Allen", "2" = "Anderson", "3" = "Atchison", "4" = "Barber", 
+    "5" = "Barton", "6" = "Bourbon", "7" = "Brown", "8" = "Butler", 
+    "9" = "Chase", "10" = "Chautauqua", "11" = "Cherokee", "12" = "Cheyenne", 
+    "13" = "Clark", "14" = "Clay", "15" = "Cloud", "16" = "Coffey", 
+    "17" = "Comanche", "18" = "Cowley", "19" = "Crawford", "20" = "Decatur", 
+    "21" = "Dickinson", "22" = "Doniphan", "23" = "Douglas", "24" = "Edwards", 
+    "25" = "Elk", "26" = "Ellis", "27" = "Ellsworth", "28" = "Finney", 
+    "29" = "Ford", "30" = "Franklin", "31" = "Geary", "32" = "Gove", 
+    "33" = "Graham", "34" = "Grant", "35" = "Gray", "36" = "Greeley", 
+    "37" = "Greenwood", "38" = "Hamilton", "39" = "Harper", "40" = "Harvey", 
+    "41" = "Haskell", "42" = "Hodgeman", "43" = "Jackson", "44" = "Jefferson", 
+    "45" = "Jewell", "46" = "Johnson", "47" = "Kearny", "48" = "Kingman", 
+    "49" = "Kiowa", "50" = "Labette", "51" = "Lane", "52" = "Leavenworth", 
+    "53" = "Lincoln", "54" = "Linn", "55" = "Logan", "56" = "Lyon", 
+    "57" = "Marion", "58" = "Marshall", "59" = "McPherson", "60" = "Meade", 
+    "61" = "Miami", "62" = "Mitchell", "63" = "Montgomery", "64" = "Morris", 
+    "65" = "Morton", "66" = "Nemaha", "67" = "Neosho", "68" = "Ness", 
+    "69" = "Norton", "70" = "Osage", "71" = "Osborne", "72" = "Ottawa", 
+    "73" = "Pawnee", "74" = "Phillips", "75" = "Pottawatomie", "76" = "Pratt", 
+    "77" = "Rawlins", "78" = "Reno", "79" = "Republic", "80" = "Rice", 
+    "81" = "Riley", "82" = "Rooks", "83" = "Rush", "84" = "Russell", 
+    "85" = "Saline", "86" = "Scott", "87" = "Sedgwick", "88" = "Seward", 
+    "89" = "Shawnee", "90" = "Sheridan", "91" = "Sherman", "92" = "Smith", 
+    "93" = "Stafford", "94" = "Stanton", "95" = "Stevens", "96" = "Sumner", 
+    "97" = "Thomas", "98" = "Trego", "99" = "Wabaunsee", "100" = "Wallace", 
+    "101" = "Washington", "102" = "Wichita", "103" = "Wilson", "104" = "Woodson", 
+    "105" = "Wyandotte"
+  ),
+
+ # Kentucky (120 counties)
+  Kentucky = c(
+    "1" = "Adair", "2" = "Allen", "3" = "Anderson", "4" = "Ballard", 
+    "5" = "Barren", "6" = "Bath", "7" = "Bell", "8" = "Boone", 
+    "9" = "Bourbon", "10" = "Boyd", "11" = "Boyle", "12" = "Bracken", 
+    "13" = "Breathitt", "14" = "Breckinridge", "15" = "Bullitt", "16" = "Butler", 
+    "17" = "Caldwell", "18" = "Calloway", "19" = "Campbell", "20" = "Carlisle", 
+    "21" = "Carroll", "22" = "Carter", "23" = "Casey", "24" = "Christian", 
+    "25" = "Clark", "26" = "Clay", "27" = "Clinton", "28" = "Crittenden", 
+    "29" = "Cumberland", "30" = "Daviess", "31" = "Edmonson", "32" = "Elliott", 
+    "33" = "Estill", "34" = "Fayette", "35" = "Fleming", "36" = "Floyd", 
+    "37" = "Franklin", "38" = "Fulton", "39" = "Gallatin", "40" = "Garrard", 
+    "41" = "Grant", "42" = "Graves", "43" = "Grayson", "44" = "Green", 
+    "45" = "Greenup", "46" = "Hancock", "47" = "Hardin", "48" = "Harlan", 
+    "49" = "Harrison", "50" = "Hart", "51" = "Henderson", "52" = "Henry", 
+    "53" = "Hickman", "54" = "Hopkins", "55" = "Jackson", "56" = "Jefferson", 
+    "57" = "Jessamine", "58" = "Johnson", "59" = "Kenton", "60" = "Knott", 
+    "61" = "Knox", "62" = "LaRue", "63" = "Laurel", "64" = "Lawrence", 
+    "65" = "Lee", "66" = "Leslie", "67" = "Letcher", "68" = "Lewis", 
+    "69" = "Lincoln", "70" = "Livingston", "71" = "Logan", "72" = "Lyon", 
+    "73" = "Madison", "74" = "Magoffin", "75" = "Marion", "76" = "Marshall", 
+    "77" = "Martin", "78" = "Mason", "79" = "McCracken", "80" = "McCreary", 
+    "81" = "McLean", "82" = "Meade", "83" = "Menifee", "84" = "Mercer", 
+    "85" = "Metcalfe", "86" = "Monroe", "87" = "Montgomery", "88" = "Morgan", 
+    "89" = "Muhlenberg", "90" = "Nelson", "91" = "Nicholas", "92" = "Ohio", 
+    "93" = "Oldham", "94" = "Owen", "95" = "Owsley", "96" = "Pendleton", 
+    "97" = "Perry", "98" = "Pike", "99" = "Powell", "100" = "Pulaski", 
+    "101" = "Robertson", "102" = "Rockcastle", "103" = "Rowan", "104" = "Russell", 
+    "105" = "Scott", "106" = "Shelby", "107" = "Simpson", "108" = "Spencer", 
+    "109" = "Taylor", "110" = "Todd", "111" = "Trigg", "112" = "Trimble", 
+    "113" = "Union", "114" = "Warren", "115" = "Washington", "116" = "Wayne", 
+    "117" = "Webster", "118" = "Whitley", "119" = "Wolfe", "120" = "Woodford"
+  ),
+  
+  # Louisiana (64 parishes)
+  Louisiana = c(
+    "1" = "Acadia", "2" = "Allen", "3" = "Ascension", "4" = "Assumption", 
+    "5" = "Avoyelles", "6" = "Beauregard", "7" = "Bienville", "8" = "Bossier", 
+    "9" = "Caddo", "10" = "Calcasieu", "11" = "Caldwell", "12" = "Cameron", 
+    "13" = "Catahoula", "14" = "Claiborne", "15" = "Concordia", "16" = "DeSoto", 
+    "17" = "East Baton Rouge", "18" = "East Carroll", "19" = "East Feliciana", "20" = "Evangeline", 
+    "21" = "Franklin", "22" = "Grant", "23" = "Iberia", "24" = "Iberville", 
+    "25" = "Jackson", "26" = "Jefferson", "27" = "Jefferson Davis", "28" = "Lafayette", 
+    "29" = "Lafourche", "30" = "LaSalle", "31" = "Lincoln", "32" = "Livingston", 
+    "33" = "Madison", "34" = "Morehouse", "35" = "Natchitoches", "36" = "Orleans", 
+    "37" = "Ouachita", "38" = "Plaquemines", "39" = "Pointe Coupee", "40" = "Rapides", 
+    "41" = "Red River", "42" = "Richland", "43" = "Sabine", "44" = "St. Bernard", 
+    "45" = "St. Charles", "46" = "St. Helena", "47" = "St. James", "48" = "St. John the Baptist", 
+    "49" = "St. Landry", "50" = "St. Martin", "51" = "St. Mary", "52" = "St. Tammany", 
+    "53" = "Tangipahoa", "54" = "Tensas", "55" = "Terrebonne", "56" = "Union", 
+    "57" = "Vermilion", "58" = "Vernon", "59" = "Washington", "60" = "Webster", 
+    "61" = "West Baton Rouge", "62" = "West Carroll", "63" = "West Feliciana", "64" = "Winn"
+  ),
+
+  # Maine (16 counties)
+  Maine = c(
+    "1" = "Androscoggin", "2" = "Aroostook", "3" = "Cumberland", "4" = "Franklin", 
+    "5" = "Hancock", "6" = "Kennebec", "7" = "Knox", "8" = "Lincoln", 
+    "9" = "Oxford", "10" = "Penobscot", "11" = "Piscataquis", "12" = "Sagadahoc", 
+    "13" = "Somerset", "14" = "Waldo", "15" = "Washington", "16" = "York"
+  ),
+  
+  # Maryland (24 counties and independent city)
+  Maryland = c(
+    "1" = "Allegany", "2" = "Anne Arundel", "3" = "Baltimore", "4" = "Baltimore City", 
+    "5" = "Calvert", "6" = "Caroline", "7" = "Carroll", "8" = "Cecil", 
+    "9" = "Charles", "10" = "Dorchester", "11" = "Frederick", "12" = "Garrett", 
+    "13" = "Harford", "14" = "Howard", "15" = "Kent", "16" = "Montgomery", 
+    "17" = "Prince George's", "18" = "Queen Anne's", "19" = "St. Mary's", "20" = "Somerset", 
+    "21" = "Talbot", "22" = "Washington", "23" = "Wicomico", "24" = "Worcester"
+  ),
+  
+  # Massachusetts (14 counties)
+  Massachusetts = c(
+    "1" = "Barnstable", "2" = "Berkshire", "3" = "Bristol", "4" = "Dukes", 
+    "5" = "Essex", "6" = "Franklin", "7" = "Hampden", "8" = "Hampshire", 
+    "9" = "Middlesex", "10" = "Nantucket", "11" = "Norfolk", "12" = "Plymouth", 
+    "13" = "Suffolk", "14" = "Worcester"
+  ),
+  
+  # Michigan (83 counties)
+  Michigan = c(
+    "1" = "Alcona", "2" = "Alger", "3" = "Allegan", "4" = "Alpena", 
+    "5" = "Antrim", "6" = "Arenac", "7" = "Baraga", "8" = "Barry", 
+    "9" = "Bay", "10" = "Benzie", "11" = "Berrien", "12" = "Branch", 
+    "13" = "Calhoun", "14" = "Cass", "15" = "Charlevoix", "16" = "Cheboygan", 
+    "17" = "Chippewa", "18" = "Clare", "19" = "Clinton", "20" = "Crawford", 
+    "21" = "Delta", "22" = "Dickinson", "23" = "Eaton", "24" = "Emmet", 
+    "25" = "Genesee", "26" = "Gladwin", "27" = "Gogebic", "28" = "Grand Traverse", 
+    "29" = "Gratiot", "30" = "Hillsdale", "31" = "Houghton", "32" = "Huron", 
+    "33" = "Ingham", "34" = "Ionia", "35" = "Iosco", "36" = "Iron", 
+    "37" = "Isabella", "38" = "Jackson", "39" = "Kalamazoo", "40" = "Kalkaska", 
+    "41" = "Kent", "42" = "Keweenaw", "43" = "Lake", "44" = "Lapeer", 
+    "45" = "Leelanau", "46" = "Lenawee", "47" = "Livingston", "48" = "Luce", 
+    "49" = "Mackinac", "50" = "Macomb", "51" = "Manistee", "52" = "Marquette", 
+    "53" = "Mason", "54" = "Mecosta", "55" = "Menominee", "56" = "Midland", 
+    "57" = "Missaukee", "58" = "Monroe", "59" = "Montcalm", "60" = "Montmorency", 
+    "61" = "Muskegon", "62" = "Newaygo", "63" = "Oakland", "64" = "Oceana", 
+    "65" = "Ogemaw", "66" = "Ontonagon", "67" = "Osceola", "68" = "Oscoda", 
+    "69" = "Otsego", "70" = "Ottawa", "71" = "Presque Isle", "72" = "Roscommon", 
+    "73" = "Saginaw", "74" = "St. Clair", "75" = "St. Joseph", "76" = "Sanilac", 
+    "77" = "Schoolcraft", "78" = "Shiawassee", "79" = "Tuscola", "80" = "Van Buren", 
+    "81" = "Washtenaw", "82" = "Wayne", "83" = "Wexford"
+  ),
+
+ # Minnesota (87 counties)
+  Minnesota = c(
+    "1" = "Aitkin", "2" = "Anoka", "3" = "Becker", "4" = "Beltrami", 
+    "5" = "Benton", "6" = "Big Stone", "7" = "Blue Earth", "8" = "Brown", 
+    "9" = "Carlton", "10" = "Carver", "11" = "Cass", "12" = "Chippewa", 
+    "13" = "Chisago", "14" = "Clay", "15" = "Clearwater", "16" = "Cook", 
+    "17" = "Cottonwood", "18" = "Crow Wing", "19" = "Dakota", "20" = "Dodge", 
+    "21" = "Douglas", "22" = "Faribault", "23" = "Fillmore", "24" = "Freeborn", 
+    "25" = "Goodhue", "26" = "Grant", "27" = "Hennepin", "28" = "Houston", 
+    "29" = "Hubbard", "30" = "Isanti", "31" = "Itasca", "32" = "Jackson", 
+    "33" = "Kanabec", "34" = "Kandiyohi", "35" = "Kittson", "36" = "Koochiching", 
+    "37" = "Lac qui Parle", "38" = "Lake", "39" = "Lake of the Woods", "40" = "LeSueur", 
+    "41" = "Lincoln", "42" = "Lyon", "43" = "Mahnomen", "44" = "Marshall", 
+    "45" = "Martin", "46" = "McLeod", "47" = "Meeker", "48" = "Mille Lacs", 
+    "49" = "Morrison", "50" = "Mower", "51" = "Murray", "52" = "Nicollet", 
+    "53" = "Nobles", "54" = "Norman", "55" = "Olmsted", "56" = "Otter Tail", 
+    "57" = "Pennington", "58" = "Pine", "59" = "Pipestone", "60" = "Polk", 
+    "61" = "Pope", "62" = "Ramsey", "63" = "Red Lake", "64" = "Redwood", 
+    "65" = "Renville", "66" = "Rice", "67" = "Rock", "68" = "Roseau", 
+    "69" = "St. Louis", "70" = "Scott", "71" = "Sherburne", "72" = "Sibley", 
+    "73" = "Stearns", "74" = "Steele", "75" = "Stevens", "76" = "Swift", 
+    "77" = "Todd", "78" = "Traverse", "79" = "Wabasha", "80" = "Wadena", 
+    "81" = "Waseca", "82" = "Washington", "83" = "Watonwan", "84" = "Wilkin", 
+    "85" = "Winona", "86" = "Wright", "87" = "Yellow Medicine"
+  ),
+  
+  # Mississippi (82 counties)
+  Mississippi = c(
+    "1" = "Adams", "2" = "Alcorn", "3" = "Amite", "4" = "Attala", 
+    "5" = "Benton", "6" = "Bolivar", "7" = "Calhoun", "8" = "Carroll", 
+    "9" = "Chickasaw", "10" = "Choctaw", "11" = "Claiborne", "12" = "Clarke", 
+    "13" = "Clay", "14" = "Coahoma", "15" = "Copiah", "16" = "Covington", 
+    "17" = "DeSoto", "18" = "Forrest", "19" = "Franklin", "20" = "George", 
+    "21" = "Greene", "22" = "Grenada", "23" = "Hancock", "24" = "Harrison", 
+    "25" = "Hinds", "26" = "Holmes", "27" = "Humphreys", "28" = "Issaquena", 
+    "29" = "Itawamba", "30" = "Jackson", "31" = "Jasper", "32" = "Jefferson", 
+    "33" = "Jefferson Davis", "34" = "Jones", "35" = "Kemper", "36" = "Lafayette", 
+    "37" = "Lamar", "38" = "Lauderdale", "39" = "Lawrence", "40" = "Leake", 
+    "41" = "Lee", "42" = "Leflore", "43" = "Lincoln", "44" = "Lowndes", 
+    "45" = "Madison", "46" = "Marion", "47" = "Marshall", "48" = "Monroe", 
+    "49" = "Montgomery", "50" = "Neshoba", "51" = "Newton", "52" = "Noxubee", 
+    "53" = "Oktibbeha", "54" = "Panola", "55" = "Pearl River", "56" = "Perry", 
+    "57" = "Pike", "58" = "Pontotoc", "59" = "Prentiss", "60" = "Quitman", 
+    "61" = "Rankin", "62" = "Scott", "63" = "Sharkey", "64" = "Simpson", 
+    "65" = "Smith", "66" = "Stone", "67" = "Sunflower", "68" = "Tallahatchie", 
+    "69" = "Tate", "70" = "Tippah", "71" = "Tishomingo", "72" = "Tunica", 
+    "73" = "Union", "74" = "Walthall", "75" = "Warren", "76" = "Washington", 
+    "77" = "Wayne", "78" = "Webster", "79" = "Wilkinson", "80" = "Winston", 
+    "81" = "Yalobusha", "82" = "Yazoo"
+  ),
+
+  # Missouri (115 counties and independent city)
+  Missouri = c(
+    "1" = "Adair", "2" = "Andrew", "3" = "Atchison", "4" = "Audrain", 
+    "5" = "Barry", "6" = "Barton", "7" = "Bates", "8" = "Benton", 
+    "9" = "Bollinger", "10" = "Boone", "11" = "Buchanan", "12" = "Butler", 
+    "13" = "Caldwell", "14" = "Callaway", "15" = "Camden", "16" = "Cape Girardeau", 
+    "17" = "Carroll", "18" = "Carter", "19" = "Cass", "20" = "Cedar", 
+    "21" = "Chariton", "22" = "Christian", "23" = "Clark", "24" = "Clay", 
+    "25" = "Clinton", "26" = "Cole", "27" = "Cooper", "28" = "Crawford", 
+    "29" = "Dade", "30" = "Dallas", "31" = "Daviess", "32" = "DeKalb", 
+    "33" = "Dent", "34" = "Douglas", "35" = "Dunklin", "36" = "Franklin", 
+    "37" = "Gasconade", "38" = "Gentry", "39" = "Greene", "40" = "Grundy", 
+    "41" = "Harrison", "42" = "Henry", "43" = "Hickory", "44" = "Holt", 
+    "45" = "Howard", "46" = "Howell", "47" = "Iron", "48" = "Jackson", 
+    "49" = "Jasper", "50" = "Jefferson", "51" = "Johnson", "52" = "Knox", 
+    "53" = "Laclede", "54" = "Lafayette", "55" = "Lawrence", "56" = "Lewis", 
+    "57" = "Lincoln", "58" = "Linn", "59" = "Livingston", "60" = "Macon", 
+    "61" = "Madison", "62" = "Maries", "63" = "Marion", "64" = "McDonald", 
+    "65" = "Mercer", "66" = "Miller", "67" = "Mississippi", "68" = "Moniteau", 
+    "69" = "Monroe", "70" = "Montgomery", "71" = "Morgan", "72" = "New Madrid", 
+    "73" = "Newton", "74" = "Nodaway", "75" = "Oregon", "76" = "Osage", 
+    "77" = "Ozark", "78" = "Pemiscot", "79" = "Perry", "80" = "Pettis", 
+    "81" = "Phelps", "82" = "Pike", "83" = "Platte", "84" = "Polk", 
+    "85" = "Pulaski", "86" = "Putnam", "87" = "Ralls", "88" = "Randolph", 
+    "89" = "Ray", "90" = "Reynolds", "91" = "Ripley", "92" = "St. Charles", 
+    "93" = "St. Clair", "94" = "St. Francois", "95" = "St. Louis", 
+    "96" = "St. Louis City", "97" = "Ste. Genevieve", "98" = "Saline", 
+    "99" = "Schuyler", "100" = "Scotland", "101" = "Scott", "102" = "Shannon", 
+    "103" = "Shelby", "104" = "Stoddard", "105" = "Stone", "106" = "Sullivan", 
+    "107" = "Taney", "108" = "Texas", "109" = "Vernon", "110" = "Warren", 
+    "111" = "Washington", "112" = "Wayne", "113" = "Webster", "114" = "Worth", 
+    "115" = "Wright"
+  ),
+  
+  # Montana (56 counties)
+  Montana = c(
+    "1" = "Beaverhead", "2" = "Big Horn", "3" = "Blaine", "4" = "Broadwater", 
+    "5" = "Carbon", "6" = "Carter", "7" = "Cascade", "8" = "Chouteau", 
+    "9" = "Custer", "10" = "Daniels", "11" = "Dawson", "12" = "Deer Lodge", 
+    "13" = "Fallon", "14" = "Fergus", "15" = "Flathead", "16" = "Gallatin", 
+    "17" = "Garfield", "18" = "Glacier", "19" = "Golden Valley", "20" = "Granite", 
+    "21" = "Hill", "22" = "Jefferson", "23" = "Judith Basin", "24" = "Lake", 
+    "25" = "Lewis and Clark", "26" = "Liberty", "27" = "Lincoln", "28" = "Madison", 
+    "29" = "McCone", "30" = "Meagher", "31" = "Mineral", "32" = "Missoula", 
+    "33" = "Musselshell", "34" = "Park", "35" = "Petroleum", "36" = "Phillips", 
+    "37" = "Pondera", "38" = "Powder River", "39" = "Powell", "40" = "Prairie", 
+    "41" = "Ravalli", "42" = "Richland", "43" = "Roosevelt", "44" = "Rosebud", 
+    "45" = "Sanders", "46" = "Sheridan", "47" = "Silver Bow", "48" = "Stillwater", 
+    "49" = "Sweet Grass", "50" = "Teton", "51" = "Toole", "52" = "Treasure", 
+    "53" = "Valley", "54" = "Wheatland", "55" = "Wibaux", "56" = "Yellowstone"
+  ),
+
+ # Nebraska (93 counties)
+  Nebraska = c(
+    "1" = "Adams", "2" = "Antelope", "3" = "Arthur", "4" = "Banner", 
+    "5" = "Blaine", "6" = "Boone", "7" = "Box Butte", "8" = "Boyd", 
+    "9" = "Brown", "10" = "Buffalo", "11" = "Burt", "12" = "Butler", 
+    "13" = "Cass", "14" = "Cedar", "15" = "Chase", "16" = "Cherry", 
+    "17" = "Cheyenne", "18" = "Clay", "19" = "Colfax", "20" = "Cuming", 
+    "21" = "Custer", "22" = "Dakota", "23" = "Dawes", "24" = "Dawson", 
+    "25" = "Deuel", "26" = "Dixon", "27" = "Dodge", "28" = "Douglas", 
+    "29" = "Dundy", "30" = "Fillmore", "31" = "Franklin", "32" = "Frontier", 
+    "33" = "Furnas", "34" = "Gage", "35" = "Garden", "36" = "Garfield", 
+    "37" = "Gosper", "38" = "Grant", "39" = "Greeley", "40" = "Hall", 
+    "41" = "Hamilton", "42" = "Harlan", "43" = "Hayes", "44" = "Hitchcock", 
+    "45" = "Holt", "46" = "Hooker", "47" = "Howard", "48" = "Jefferson", 
+    "49" = "Johnson", "50" = "Kearney", "51" = "Keith", "52" = "Keya Paha", 
+    "53" = "Kimball", "54" = "Knox", "55" = "Lancaster", "56" = "Lincoln", 
+    "57" = "Logan", "58" = "Loup", "59" = "Madison", "60" = "McPherson", 
+    "61" = "Merrick", "62" = "Morrill", "63" = "Nance", "64" = "Nemaha", 
+    "65" = "Nuckolls", "66" = "Otoe", "67" = "Pawnee", "68" = "Perkins", 
+    "69" = "Phelps", "70" = "Pierce", "71" = "Platte", "72" = "Polk", 
+    "73" = "Red Willow", "74" = "Richardson", "75" = "Rock", "76" = "Saline", 
+    "77" = "Sarpy", "78" = "Saunders", "79" = "Scotts Bluff", "80" = "Seward", 
+    "81" = "Sheridan", "82" = "Sherman", "83" = "Sioux", "84" = "Stanton", 
+    "85" = "Thayer", "86" = "Thomas", "87" = "Thurston", "88" = "Valley", 
+    "89" = "Washington", "90" = "Wayne", "91" = "Webster", "92" = "Wheeler", 
+    "93" = "York"
+  ),
+  
+  # Nevada (17 counties and independent city)
+  Nevada = c(
+    "1" = "Carson City", "2" = "Churchill", "3" = "Clark", "4" = "Douglas", 
+    "5" = "Elko", "6" = "Esmeralda", "7" = "Eureka", "8" = "Humboldt", 
+    "9" = "Lander", "10" = "Lincoln", "11" = "Lyon", "12" = "Mineral", 
+    "13" = "Nye", "14" = "Pershing", "15" = "Storey", "16" = "Washoe", 
+    "17" = "White Pine"
+  ),
+  
+  # New Hampshire (10 counties)
+  `New Hampshire` = c(
+    "1" = "Belknap", "2" = "Carroll", "3" = "Cheshire", "4" = "Coos", 
+    "5" = "Grafton", "6" = "Hillsborough", "7" = "Merrimack", "8" = "Rockingham", 
+    "9" = "Strafford", "10" = "Sullivan"
+  ),
+  
+  # New Jersey (21 counties)
+  `New Jersey` = c(
+    "1" = "Atlantic", "2" = "Bergen", "3" = "Burlington", "4" = "Camden", 
+    "5" = "Cape May", "6" = "Cumberland", "7" = "Essex", "8" = "Gloucester", 
+    "9" = "Hudson", "10" = "Hunterdon", "11" = "Mercer", "12" = "Middlesex", 
+    "13" = "Monmouth", "14" = "Morris", "15" = "Ocean", "16" = "Passaic", 
+    "17" = "Salem", "18" = "Somerset", "19" = "Sussex", "20" = "Union", 
+    "21" = "Warren"
+  ),
+  
+  # New Mexico (33 counties)
+  `New Mexico` = c(
+    "1" = "Bernalillo", "2" = "Catron", "3" = "Chaves", "4" = "Cibola", 
+    "5" = "Colfax", "6" = "Curry", "7" = "De Baca", "8" = "Doña Ana", 
+    "9" = "Eddy", "10" = "Grant", "11" = "Guadalupe", "12" = "Harding", 
+    "13" = "Hidalgo", "14" = "Lea", "15" = "Lincoln", "16" = "Los Alamos", 
+    "17" = "Luna", "18" = "McKinley", "19" = "Mora", "20" = "Otero", 
+    "21" = "Quay", "22" = "Rio Arriba", "23" = "Roosevelt", "24" = "Sandoval", 
+    "25" = "San Juan", "26" = "San Miguel", "27" = "Santa Fe", "28" = "Sierra", 
+    "29" = "Socorro", "30" = "Taos", "31" = "Torrance", "32" = "Union", 
+    "33" = "Valencia"
+  ),
+  
+ # New York (62 counties)
+  `New York` = c(
+    "1" = "Albany", "2" = "Allegany", "3" = "Bronx", "4" = "Broome", 
+    "5" = "Cattaraugus", "6" = "Cayuga", "7" = "Chautauqua", "8" = "Chemung", 
+    "9" = "Chenango", "10" = "Clinton", "11" = "Columbia", "12" = "Cortland", 
+    "13" = "Delaware", "14" = "Dutchess", "15" = "Erie", "16" = "Essex", 
+    "17" = "Franklin", "18" = "Fulton", "19" = "Genesee", "20" = "Greene", 
+    "21" = "Hamilton", "22" = "Herkimer", "23" = "Jefferson", "24" = "Kings", 
+    "25" = "Lewis", "26" = "Livingston", "27" = "Madison", "28" = "Monroe", 
+    "29" = "Montgomery", "30" = "Nassau", "31" = "New York", "32" = "Niagara", 
+    "33" = "Oneida", "34" = "Onondaga", "35" = "Ontario", "36" = "Orange", 
+    "37" = "Orleans", "38" = "Oswego", "39" = "Otsego", "40" = "Putnam", 
+    "41" = "Queens", "42" = "Rensselaer", "43" = "Richmond", "44" = "Rockland", 
+    "45" = "St. Lawrence", "46" = "Saratoga", "47" = "Schenectady", "48" = "Schoharie", 
+    "49" = "Schuyler", "50" = "Seneca", "51" = "Steuben", "52" = "Suffolk", 
+    "53" = "Sullivan", "54" = "Tioga", "55" = "Tompkins", "56" = "Ulster", 
+    "57" = "Warren", "58" = "Washington", "59" = "Wayne", "60" = "Westchester", 
+    "61" = "Wyoming", "62" = "Yates"
+  ),
+  
+  # North Carolina (100 counties)
+  `North Carolina` = c(
+    "1" = "Alamance", "2" = "Alexander", "3" = "Alleghany", "4" = "Anson", 
+    "5" = "Ashe", "6" = "Avery", "7" = "Beaufort", "8" = "Bertie", 
+    "9" = "Bladen", "10" = "Brunswick", "11" = "Buncombe", "12" = "Burke", 
+    "13" = "Cabarrus", "14" = "Caldwell", "15" = "Camden", "16" = "Carteret", 
+    "17" = "Caswell", "18" = "Catawba", "19" = "Chatham", "20" = "Cherokee", 
+    "21" = "Chowan", "22" = "Clay", "23" = "Cleveland", "24" = "Columbus", 
+    "25" = "Craven", "26" = "Cumberland", "27" = "Currituck", "28" = "Dare", 
+    "29" = "Davidson", "30" = "Davie", "31" = "Duplin", "32" = "Durham", 
+    "33" = "Edgecombe", "34" = "Forsyth", "35" = "Franklin", "36" = "Gaston", 
+    "37" = "Gates", "38" = "Graham", "39" = "Granville", "40" = "Greene", 
+    "41" = "Guilford", "42" = "Halifax", "43" = "Harnett", "44" = "Haywood", 
+    "45" = "Henderson", "46" = "Hertford", "47" = "Hoke", "48" = "Hyde", 
+    "49" = "Iredell", "50" = "Jackson", "51" = "Johnston", "52" = "Jones", 
+    "53" = "Lee", "54" = "Lenoir", "55" = "Lincoln", "56" = "Macon", 
+    "57" = "Madison", "58" = "Martin", "59" = "McDowell", "60" = "Mecklenburg", 
+    "61" = "Mitchell", "62" = "Montgomery", "63" = "Moore", "64" = "Nash", 
+    "65" = "New Hanover", "66" = "Northampton", "67" = "Onslow", "68" = "Orange", 
+    "69" = "Pamlico", "70" = "Pasquotank", "71" = "Pender", "72" = "Perquimans", 
+    "73" = "Person", "74" = "Pitt", "75" = "Polk", "76" = "Randolph", 
+    "77" = "Richmond", "78" = "Robeson", "79" = "Rockingham", "80" = "Rowan", 
+    "81" = "Rutherford", "82" = "Sampson", "83" = "Scotland", "84" = "Stanly", 
+    "85" = "Stokes", "86" = "Surry", "87" = "Swain", "88" = "Transylvania", 
+    "89" = "Tyrrell", "90" = "Union", "91" = "Vance", "92" = "Wake", 
+    "93" = "Warren", "94" = "Washington", "95" = "Watauga", "96" = "Wayne", 
+    "97" = "Wilkes", "98" = "Wilson", "99" = "Yadkin", "100" = "Yancey"
+  ),
+
+   # North Dakota (53 counties)
+  `North Dakota` = c(
+    "1" = "Adams", "2" = "Barnes", "3" = "Benson", "4" = "Billings", 
+    "5" = "Bottineau", "6" = "Bowman", "7" = "Burke", "8" = "Burleigh", 
+    "9" = "Cass", "10" = "Cavalier", "11" = "Dickey", "12" = "Divide", 
+    "13" = "Dunn", "14" = "Eddy", "15" = "Emmons", "16" = "Foster", 
+    "17" = "Golden Valley", "18" = "Grand Forks", "19" = "Grant", "20" = "Griggs", 
+    "21" = "Hettinger", "22" = "Kidder", "23" = "LaMoure", "24" = "Logan", 
+    "25" = "McHenry", "26" = "McIntosh", "27" = "McKenzie", "28" = "McLean", 
+    "29" = "Mercer", "30" = "Morton", "31" = "Mountrail", "32" = "Nelson", 
+    "33" = "Oliver", "34" = "Pembina", "35" = "Pierce", "36" = "Ramsey", 
+    "37" = "Ransom", "38" = "Renville", "39" = "Richland", "40" = "Rolette", 
+    "41" = "Sargent", "42" = "Sheridan", "43" = "Sioux", "44" = "Slope", 
+    "45" = "Stark", "46" = "Steele", "47" = "Stutsman", "48" = "Towner", 
+    "49" = "Traill", "50" = "Walsh", "51" = "Ward", "52" = "Wells", 
+    "53" = "Williams"
+  ),
+  
+  # Ohio (88 counties)
+  Ohio = c(
+    "1" = "Adams", "2" = "Allen", "3" = "Ashland", "4" = "Ashtabula", 
+    "5" = "Athens", "6" = "Auglaize", "7" = "Belmont", "8" = "Brown", 
+    "9" = "Butler", "10" = "Carroll", "11" = "Champaign", "12" = "Clark", 
+    "13" = "Clermont", "14" = "Clinton", "15" = "Columbiana", "16" = "Coshocton", 
+    "17" = "Crawford", "18" = "Cuyahoga", "19" = "Darke", "20" = "Defiance", 
+    "21" = "Delaware", "22" = "Erie", "23" = "Fairfield", "24" = "Fayette", 
+    "25" = "Franklin", "26" = "Fulton", "27" = "Gallia", "28" = "Geauga", 
+    "29" = "Greene", "30" = "Guernsey", "31" = "Hamilton", "32" = "Hancock", 
+    "33" = "Hardin", "34" = "Harrison", "35" = "Henry", "36" = "Highland", 
+    "37" = "Hocking", "38" = "Holmes", "39" = "Huron", "40" = "Jackson", 
+    "41" = "Jefferson", "42" = "Knox", "43" = "Lake", "44" = "Lawrence", 
+    "45" = "Licking", "46" = "Logan", "47" = "Lorain", "48" = "Lucas", 
+    "49" = "Madison", "50" = "Mahoning", "51" = "Marion", "52" = "Medina", 
+    "53" = "Meigs", "54" = "Mercer", "55" = "Miami", "56" = "Monroe", 
+    "57" = "Montgomery", "58" = "Morgan", "59" = "Morrow", "60" = "Muskingum", 
+    "61" = "Noble", "62" = "Ottawa", "63" = "Paulding", "64" = "Perry", 
+    "65" = "Pickaway", "66" = "Pike", "67" = "Portage", "68" = "Preble", 
+    "69" = "Putnam", "70" = "Richland", "71" = "Ross", "72" = "Sandusky", 
+    "73" = "Scioto", "74" = "Seneca", "75" = "Shelby", "76" = "Stark", 
+    "77" = "Summit", "78" = "Trumbull", "79" = "Tuscarawas", "80" = "Union", 
+    "81" = "Van Wert", "82" = "Vinton", "83" = "Warren", "84" = "Washington", 
+    "85" = "Wayne", "86" = "Williams", "87" = "Wood", "88" = "Wyandot"
+  ),
+
+ # Oklahoma (77 counties)
+  Oklahoma = c(
+    "1" = "Adair", "2" = "Alfalfa", "3" = "Atoka", "4" = "Beaver", 
+    "5" = "Beckham", "6" = "Blaine", "7" = "Bryan", "8" = "Caddo", 
+    "9" = "Canadian", "10" = "Carter", "11" = "Cherokee", "12" = "Choctaw", 
+    "13" = "Cimarron", "14" = "Cleveland", "15" = "Coal", "16" = "Comanche", 
+    "17" = "Cotton", "18" = "Craig", "19" = "Creek", "20" = "Custer", 
+    "21" = "Delaware", "22" = "Dewey", "23" = "Ellis", "24" = "Garfield", 
+    "25" = "Garvin", "26" = "Grady", "27" = "Grant", "28" = "Greer", 
+    "29" = "Harmon", "30" = "Harper", "31" = "Haskell", "32" = "Hughes", 
+    "33" = "Jackson", "34" = "Jefferson", "35" = "Johnston", "36" = "Kay", 
+    "37" = "Kingfisher", "38" = "Kiowa", "39" = "Latimer", "40" = "LeFlore", 
+    "41" = "Lincoln", "42" = "Logan", "43" = "Love", "44" = "Major", 
+    "45" = "Marshall", "46" = "Mayes", "47" = "McClain", "48" = "McCurtain", 
+    "49" = "McIntosh", "50" = "Murray", "51" = "Muskogee", "52" = "Noble", 
+    "53" = "Nowata", "54" = "Okfuskee", "55" = "Oklahoma", "56" = "Okmulgee", 
+    "57" = "Osage", "58" = "Ottawa", "59" = "Pawnee", "60" = "Payne", 
+    "61" = "Pittsburg", "62" = "Pontotoc", "63" = "Pottawatomie", "64" = "Pushmataha", 
+    "65" = "Roger Mills", "66" = "Rogers", "67" = "Seminole", "68" = "Sequoyah", 
+    "69" = "Stephens", "70" = "Texas", "71" = "Tillman", "72" = "Tulsa", 
+    "73" = "Wagoner", "74" = "Washington", "75" = "Washita", "76" = "Woods", 
+    "77" = "Woodward"
+  ),
+  
+  # Oregon (36 counties)
+  Oregon = c(
+    "1" = "Baker", "2" = "Benton", "3" = "Clackamas", "4" = "Clatsop", 
+    "5" = "Columbia", "6" = "Coos", "7" = "Crook", "8" = "Curry", 
+    "9" = "Deschutes", "10" = "Douglas", "11" = "Gilliam", "12" = "Grant", 
+    "13" = "Harney", "14" = "Hood River", "15" = "Jackson", "16" = "Jefferson", 
+    "17" = "Josephine", "18" = "Klamath", "19" = "Lake", "20" = "Lane", 
+    "21" = "Lincoln", "22" = "Linn", "23" = "Malheur", "24" = "Marion", 
+    "25" = "Morrow", "26" = "Multnomah", "27" = "Polk", "28" = "Sherman", 
+    "29" = "Tillamook", "30" = "Umatilla", "31" = "Union", "32" = "Wallowa", 
+    "33" = "Wasco", "34" = "Washington", "35" = "Wheeler", "36" = "Yamhill"
+  ),
+  
+  # Pennsylvania (67 counties)
+  Pennsylvania = c(
+    "1" = "Adams", "2" = "Allegheny", "3" = "Armstrong", "4" = "Beaver", 
+    "5" = "Bedford", "6" = "Berks", "7" = "Blair", "8" = "Bradford", 
+    "9" = "Bucks", "10" = "Butler", "11" = "Cambria", "12" = "Cameron", 
+    "13" = "Carbon", "14" = "Centre", "15" = "Chester", "16" = "Clarion", 
+    "17" = "Clearfield", "18" = "Clinton", "19" = "Columbia", "20" = "Crawford", 
+    "21" = "Cumberland", "22" = "Dauphin", "23" = "Delaware", "24" = "Elk", 
+    "25" = "Erie", "26" = "Fayette", "27" = "Forest", "28" = "Franklin", 
+    "29" = "Fulton", "30" = "Greene", "31" = "Huntingdon", "32" = "Indiana", 
+    "33" = "Jefferson", "34" = "Juniata", "35" = "Lackawanna", "36" = "Lancaster", 
+    "37" = "Lawrence", "38" = "Lebanon", "39" = "Lehigh", "40" = "Luzerne", 
+    "41" = "Lycoming", "42" = "McKean", "43" = "Mercer", "44" = "Mifflin", 
+    "45" = "Monroe", "46" = "Montgomery", "47" = "Montour", "48" = "Northampton", 
+    "49" = "Northumberland", "50" = "Perry", "51" = "Philadelphia", "52" = "Pike", 
+    "53" = "Potter", "54" = "Schuylkill", "55" = "Snyder", "56" = "Somerset", 
+    "57" = "Sullivan", "58" = "Susquehanna", "59" = "Tioga", "60" = "Union", 
+    "61" = "Venango", "62" = "Warren", "63" = "Washington", "64" = "Wayne", 
+    "65" = "Westmoreland", "66" = "Wyoming", "67" = "York"
+  ),
+  
+  # Rhode Island (5 counties)
+  `Rhode Island` = c(
+    "1" = "Bristol", "2" = "Kent", "3" = "Newport", "4" = "Providence", 
+    "5" = "Washington"
+  ),
+
+# South Carolina (46 counties)
+  `South Carolina` = c(
+    "1" = "Abbeville", "2" = "Aiken", "3" = "Allendale", "4" = "Anderson", 
+    "5" = "Bamberg", "6" = "Barnwell", "7" = "Beaufort", "8" = "Berkeley", 
+    "9" = "Calhoun", "10" = "Charleston", "11" = "Cherokee", "12" = "Chester", 
+    "13" = "Chesterfield", "14" = "Clarendon", "15" = "Colleton", "16" = "Darlington", 
+    "17" = "Dillon", "18" = "Dorchester", "19" = "Edgefield", "20" = "Fairfield", 
+    "21" = "Florence", "22" = "Georgetown", "23" = "Greenville", "24" = "Greenwood", 
+    "25" = "Hampton", "26" = "Horry", "27" = "Jasper", "28" = "Kershaw", 
+    "29" = "Lancaster", "30" = "Laurens", "31" = "Lee", "32" = "Lexington", 
+    "33" = "Marion", "34" = "Marlboro", "35" = "McCormick", "36" = "Newberry", 
+    "37" = "Oconee", "38" = "Orangeburg", "39" = "Pickens", "40" = "Richland", 
+    "41" = "Saluda", "42" = "Spartanburg", "43" = "Sumter", "44" = "Union", 
+    "45" = "Williamsburg", "46" = "York"
+  ),
+  
+  # South Dakota (66 counties)
+  `South Dakota` = c(
+    "1" = "Aurora", "2" = "Beadle", "3" = "Bennett", "4" = "Bon Homme", 
+    "5" = "Brookings", "6" = "Brown", "7" = "Brule", "8" = "Buffalo", 
+    "9" = "Butte", "10" = "Campbell", "11" = "Charles Mix", "12" = "Clark", 
+    "13" = "Clay", "14" = "Codington", "15" = "Corson", "16" = "Custer", 
+    "17" = "Davison", "18" = "Day", "19" = "Deuel", "20" = "Dewey", 
+    "21" = "Douglas", "22" = "Edmunds", "23" = "Fall River", "24" = "Faulk", 
+    "25" = "Grant", "26" = "Gregory", "27" = "Haakon", "28" = "Hamlin", 
+    "29" = "Hand", "30" = "Hanson", "31" = "Harding", "32" = "Hughes", 
+    "33" = "Hutchinson", "34" = "Hyde", "35" = "Jackson", "36" = "Jerauld", 
+    "37" = "Jones", "38" = "Kingsbury", "39" = "Lake", "40" = "Lawrence", 
+    "41" = "Lincoln", "42" = "Lyman", "43" = "Marshall", "44" = "McCook", 
+    "45" = "McPherson", "46" = "Meade", "47" = "Mellette", "48" = "Miner", 
+    "49" = "Minnehaha", "50" = "Moody", "51" = "Oglala Lakota", "52" = "Pennington", 
+    "53" = "Perkins", "54" = "Potter", "55" = "Roberts", "56" = "Sanborn", 
+    "57" = "Spink", "58" = "Stanley", "59" = "Sully", "60" = "Todd", 
+    "61" = "Tripp", "62" = "Turner", "63" = "Union", "64" = "Walworth", 
+    "65" = "Yankton", "66" = "Ziebach"
+  ),
+  
+# Tennessee (95 counties)
+  Tennessee = c(
+    "1" = "Anderson", "2" = "Bedford", "3" = "Benton", "4" = "Bledsoe", 
+    "5" = "Blount", "6" = "Bradley", "7" = "Campbell", "8" = "Cannon", 
+    "9" = "Carroll", "10" = "Carter", "11" = "Cheatham", "12" = "Chester", 
+    "13" = "Claiborne", "14" = "Clay", "15" = "Cocke", "16" = "Coffee", 
+    "17" = "Crockett", "18" = "Cumberland", "19" = "Davidson", "20" = "Decatur", 
+    "21" = "DeKalb", "22" = "Dickson", "23" = "Dyer", "24" = "Fayette", 
+    "25" = "Fentress", "26" = "Franklin", "27" = "Gibson", "28" = "Giles", 
+    "29" = "Grainger", "30" = "Greene", "31" = "Grundy", "32" = "Hamblen", 
+    "33" = "Hamilton", "34" = "Hancock", "35" = "Hardeman", "36" = "Hardin", 
+    "37" = "Hawkins", "38" = "Haywood", "39" = "Henderson", "40" = "Henry", 
+    "41" = "Hickman", "42" = "Houston", "43" = "Humphreys", "44" = "Jackson", 
+    "45" = "Jefferson", "46" = "Johnson", "47" = "Knox", "48" = "Lake", 
+    "49" = "Lauderdale", "50" = "Lawrence", "51" = "Lewis", "52" = "Lincoln", 
+    "53" = "Loudon", "54" = "Macon", "55" = "Madison", "56" = "Marion", 
+    "57" = "Marshall", "58" = "Maury", "59" = "McMinn", "60" = "McNairy", 
+    "61" = "Meigs", "62" = "Monroe", "63" = "Montgomery", "64" = "Moore", 
+    "65" = "Morgan", "66" = "Obion", "67" = "Overton", "68" = "Perry", 
+    "69" = "Pickett", "70" = "Polk", "71" = "Putnam", "72" = "Rhea", 
+    "73" = "Roane", "74" = "Robertson", "75" = "Rutherford", "76" = "Scott", 
+    "77" = "Sequatchie", "78" = "Sevier", "79" = "Shelby", "80" = "Smith", 
+    "81" = "Stewart", "82" = "Sullivan", "83" = "Sumner", "84" = "Tipton", 
+    "85" = "Trousdale", "86" = "Unicoi", "87" = "Union", "88" = "Van Buren", 
+    "89" = "Warren", "90" = "Washington", "91" = "Wayne", "92" = "Weakley", 
+    "93" = "White", "94" = "Williamson", "95" = "Wilson"
+  ),
+
+ # Texas (254 counties) - Complete list
+  Texas = c(
+    "1" = "Anderson", "2" = "Andrews", "3" = "Angelina", "4" = "Aransas", 
+    "5" = "Archer", "6" = "Armstrong", "7" = "Atascosa", "8" = "Austin", 
+    "9" = "Bailey", "10" = "Bandera", "11" = "Bastrop", "12" = "Baylor", 
+    "13" = "Bee", "14" = "Bell", "15" = "Bexar", "16" = "Blanco", 
+    "17" = "Borden", "18" = "Bosque", "19" = "Bowie", "20" = "Brazoria", 
+    "21" = "Brazos", "22" = "Brewster", "23" = "Briscoe", "24" = "Brooks", 
+    "25" = "Brown", "26" = "Burleson", "27" = "Burnet", "28" = "Caldwell", 
+    "29" = "Calhoun", "30" = "Callahan", "31" = "Cameron", "32" = "Camp", 
+    "33" = "Carson", "34" = "Cass", "35" = "Castro", "36" = "Chambers", 
+    "37" = "Cherokee", "38" = "Childress", "39" = "Clay", "40" = "Cochran", 
+    "41" = "Coke", "42" = "Coleman", "43" = "Collin", "44" = "Collingsworth", 
+    "45" = "Colorado", "46" = "Comal", "47" = "Comanche", "48" = "Concho", 
+    "49" = "Cooke", "50" = "Coryell", "51" = "Cottle", "52" = "Crane", 
+    "53" = "Crockett", "54" = "Crosby", "55" = "Culberson", "56" = "Dallam", 
+    "57" = "Dallas", "58" = "Dawson", "59" = "Deaf Smith", "60" = "Delta", 
+    "61" = "Denton", "62" = "DeWitt", "63" = "Dickens", "64" = "Dimmit", 
+    "65" = "Donley", "66" = "Duval", "67" = "Eastland", "68" = "Ector", 
+    "69" = "Edwards", "70" = "Ellis", "71" = "El Paso", "72" = "Erath", 
+    "73" = "Falls", "74" = "Fannin", "75" = "Fayette", "76" = "Fisher", 
+    "77" = "Floyd", "78" = "Foard", "79" = "Fort Bend", "80" = "Franklin", 
+    "81" = "Freestone", "82" = "Frio", "83" = "Gaines", "84" = "Galveston", 
+    "85" = "Garza", "86" = "Gillespie", "87" = "Glasscock", "88" = "Goliad", 
+    "89" = "Gonzales", "90" = "Gray", "91" = "Grayson", "92" = "Gregg", 
+    "93" = "Grimes", "94" = "Guadalupe", "95" = "Hale", "96" = "Hall", 
+    "97" = "Hamilton", "98" = "Hansford", "99" = "Hardeman", "100" = "Hardin", 
+    "101" = "Harris", "102" = "Harrison", "103" = "Hartley", "104" = "Haskell", 
+    "105" = "Hays", "106" = "Hemphill", "107" = "Henderson", "108" = "Hidalgo", 
+    "109" = "Hill", "110" = "Hockley", "111" = "Hood", "112" = "Hopkins", 
+    "113" = "Houston", "114" = "Howard", "115" = "Hudspeth", "116" = "Hunt", 
+    "117" = "Hutchinson", "118" = "Irion", "119" = "Jack", "120" = "Jackson", 
+    "121" = "Jasper", "122" = "Jeff Davis", "123" = "Jefferson", "124" = "Jim Hogg", 
+    "125" = "Jim Wells", "126" = "Johnson", "127" = "Jones", "128" = "Karnes", 
+    "129" = "Kaufman", "130" = "Kendall", "131" = "Kenedy", "132" = "Kent", 
+    "133" = "Kerr", "134" = "Kimble", "135" = "King", "136" = "Kinney", 
+    "137" = "Kleberg", "138" = "Knox", "139" = "Lamar", "140" = "Lamb", 
+    "141" = "Lampasas", "142" = "LaSalle", "143" = "Lavaca", "144" = "Lee", 
+    "145" = "Leon", "146" = "Liberty", "147" = "Limestone", "148" = "Lipscomb", 
+    "149" = "Live Oak", "150" = "Llano", "151" = "Loving", "152" = "Lubbock", 
+    "153" = "Lynn", "154" = "Madison", "155" = "Marion", "156" = "Martin", 
+    "157" = "Mason", "158" = "Matagorda", "159" = "Maverick", "160" = "McCulloch", 
+    "161" = "McLennan", "162" = "McMullen", "163" = "Medina", "164" = "Menard", 
+    "165" = "Midland", "166" = "Milam", "167" = "Mills", "168" = "Mitchell", 
+    "169" = "Montague", "170" = "Montgomery", "171" = "Moore", "172" = "Morris", 
+    "173" = "Motley", "174" = "Nacogdoches", "175" = "Navarro", "176" = "Newton", 
+    "177" = "Nolan", "178" = "Nueces", "179" = "Ochiltree", "180" = "Oldham", 
+    "181" = "Orange", "182" = "Palo Pinto", "183" = "Panola", "184" = "Parker", 
+    "185" = "Parmer", "186" = "Pecos", "187" = "Polk", "188" = "Potter", 
+    "189" = "Presidio", "190" = "Rains", "191" = "Randall", "192" = "Reagan", 
+    "193" = "Real", "194" = "Red River", "195" = "Reeves", "196" = "Refugio", 
+    "197" = "Roberts", "198" = "Robertson", "199" = "Rockwall", "200" = "Runnels", 
+    "201" = "Rusk", "202" = "Sabine", "203" = "San Augustine", "204" = "San Jacinto", 
+    "205" = "San Patricio", "206" = "San Saba", "207" = "Schleicher", "208" = "Scurry", 
+    "209" = "Shackelford", "210" = "Shelby", "211" = "Sherman", "212" = "Smith", "213" = "Somervell",      "214" = "Starr", "215" = "Stephens", "216" = "Sterling", "217" = "Stonewall", "218" = "Sutton",        "219" = "Swisher", "220" = "Tarrant", "221" = "Taylor", "222" = "Terrell", "223" = "Terry", 
+    "224" = "Throckmorton", "225" = "Titus", "226" = "Tom Green", "227" = "Travis", 
+    "228" = "Trinity", "229" = "Tyler", "230" = "Upshur", "231" = "Upton", 
+    "232" = "Uvalde", "233" = "Val Verde", "234" = "Van Zandt", "235" = "Victoria", 
+    "236" = "Walker", "237" = "Waller", "238" = "Ward", "239" = "Washington", 
+    "240" = "Webb", "241" = "Wharton", "242" = "Wheeler", "243" = "Wichita", 
+    "244" = "Wilbarger", "245" = "Willacy", "246" = "Williamson", "247" = "Wilson", 
+    "248" = "Winkler", "249" = "Wise", "250" = "Wood", "251" = "Yoakum", 
+    "252" = "Young", "253" = "Zapata", "254" = "Zavala"
+  ),
+  
+# Utah (29 counties)
+  Utah = c(
+    "1" = "Beaver", "2" = "Box Elder", "3" = "Cache", "4" = "Carbon", 
+    "5" = "Daggett", "6" = "Davis", "7" = "Duchesne", "8" = "Emery", 
+    "9" = "Garfield", "10" = "Grand", "11" = "Iron", "12" = "Juab", 
+    "13" = "Kane", "14" = "Millard", "15" = "Morgan", "16" = "Piute", 
+    "17" = "Rich", "18" = "Salt Lake", "19" = "San Juan", "20" = "Sanpete", 
+    "21" = "Sevier", "22" = "Summit", "23" = "Tooele", "24" = "Uintah", 
+    "25" = "Utah", "26" = "Wasatch", "27" = "Washington", "28" = "Wayne", 
+    "29" = "Weber"
+  ),
+  
+# Vermont (14 counties)
+  Vermont = c(
+    "1" = "Addison", "2" = "Bennington", "3" = "Caledonia", "4" = "Chittenden", 
+    "5" = "Essex", "6" = "Franklin", "7" = "Grand Isle", "8" = "Lamoille", 
+    "9" = "Orange", "10" = "Orleans", "11" = "Rutland", "12" = "Washington", 
+    "13" = "Windham", "14" = "Windsor"
+  ),
+
+# Virginia (133 counties and independent cities)
+  Virginia = c(
+    "1" = "Accomack", "2" = "Albemarle", "3" = "Alexandria", "4" = "Alleghany", 
+    "5" = "Amelia", "6" = "Amherst", "7" = "Appomattox", "8" = "Arlington", 
+    "9" = "Augusta", "10" = "Bath", "11" = "Bedford", "12" = "Bland", 
+    "13" = "Botetourt", "14" = "Bristol", "15" = "Brunswick", "16" = "Buchanan", 
+    "17" = "Buckingham", "18" = "Buena Vista", "19" = "Campbell", "20" = "Caroline", 
+    "21" = "Carroll", "22" = "Charles City", "23" = "Charlotte", "24" = "Charlottesville", 
+    "25" = "Chesapeake", "26" = "Chesterfield", "27" = "Clarke", "28" = "Colonial Heights", 
+    "29" = "Covington", "30" = "Craig", "31" = "Culpeper", "32" = "Cumberland", 
+    "33" = "Danville", "34" = "Dickenson", "35" = "Dinwiddie", "36" = "Emporia", 
+    "37" = "Essex", "38" = "Fairfax", "39" = "Fairfax City", "40" = "Falls Church", 
+    "41" = "Fauquier", "42" = "Floyd", "43" = "Fluvanna", "44" = "Franklin County", 
+    "45" = "Franklin-City", "46" = "Frederick", "47" = "Fredericksburg", "48" = "Galax", 
+    "49" = "Giles", "50" = "Gloucester", "51" = "Goochland", "52" = "Grayson", 
+    "53" = "Greene", "54" = "Greensville", "55" = "Halifax", "56" = "Hampton", 
+    "57" = "Hanover", "58" = "Harrisonburg", "59" = "Henrico", "60" = "Henry", 
+    "61" = "Highland", "62" = "Hopewell", "63" = "Isle Of Wight", "64" = "James City", 
+    "65" = "King And Queen", "66" = "King George", "67" = "King William", "68" = "Lancaster", 
+    "69" = "Lee", "70" = "Lexington", "71" = "Loudoun", "72" = "Louisa", 
+    "73" = "Lunenburg", "74" = "Lynchburg", "75" = "Madison", "76" = "Manassas", 
+    "77" = "Manassas Park", "78" = "Martinsville", "79" = "Mathews", "80" = "Mecklenburg", 
+    "81" = "Middlesex", "82" = "Montgomery", "83" = "Nelson", "84" = "New Kent", 
+    "85" = "Newport News", "86" = "Norfolk", "87" = "Northampton", "88" = "Northumberland", 
+    "89" = "Norton", "90" = "Nottoway", "91" = "Orange", "92" = "Page", 
+    "93" = "Patrick", "94" = "Petersburg", "95" = "Pittsylvania", "96" = "Poquoson", 
+    "97" = "Portsmouth", "98" = "Powhatan", "99" = "Prince Edward", "100" = "Prince George", 
+    "101" = "Prince William", "102" = "Pulaski", "103" = "Radford", "104" = "Rappahannock", 
+    "105" = "Richmond County", "106" = "Richmond-City", "107" = "Roanoke County", "108" = "Roanoke-City", 
+    "109" = "Rockbridge", "110" = "Rockingham", "111" = "Russell", "112" = "Salem", 
+    "113" = "Scott", "114" = "Shenandoah", "115" = "Smyth", "116" = "Southampton", 
+    "117" = "Spotsylvania", "118" = "Stafford", "119" = "Staunton", "120" = "Suffolk", 
+    "121" = "Surry", "122" = "Sussex", "123" = "Tazewell", "124" = "Virginia Beach", 
+    "125" = "Warren", "126" = "Washington", "127" = "Waynesboro", "128" = "Westmoreland", 
+    "129" = "Williamsburg", "130" = "Winchester", "131" = "Wise", "132" = "Wythe", 
+    "133" = "York"
+  ),
+  
+# Washington (39 counties)
+  Washington = c(
+    "1" = "Adams", "2" = "Asotin", "3" = "Benton", "4" = "Chelan", 
+    "5" = "Clallam", "6" = "Clark", "7" = "Columbia", "8" = "Cowlitz", 
+    "9" = "Douglas", "10" = "Ferry", "11" = "Franklin", "12" = "Garfield", 
+    "13" = "Grant", "14" = "Grays Harbor", "15" = "Island", "16" = "Jefferson", 
+    "17" = "King", "18" = "Kitsap", "19" = "Kittitas", "20" = "Klickitat", 
+    "21" = "Lewis", "22" = "Lincoln", "23" = "Mason", "24" = "Okanogan", 
+    "25" = "Pacific", "26" = "Pend Oreille", "27" = "Pierce", "28" = "San Juan", 
+    "29" = "Skagit", "30" = "Skamania", "31" = "Snohomish", "32" = "Spokane", 
+    "33" = "Stevens", "34" = "Thurston", "35" = "Wahkiakum", "36" = "Walla Walla", 
+    "37" = "Whatcom", "38" = "Whitman", "39" = "Yakima"
+  ),
+   
+# West Virginia (55 counties)
+  `West Virginia` = c(
+    "1" = "Barbour", "2" = "Berkeley", "3" = "Boone", "4" = "Braxton", 
+    "5" = "Brooke", "6" = "Cabell", "7" = "Calhoun", "8" = "Clay", 
+    "9" = "Doddridge", "10" = "Fayette", "11" = "Gilmer", "12" = "Grant", 
+    "13" = "Greenbrier", "14" = "Hampshire", "15" = "Hancock", "16" = "Hardy", 
+    "17" = "Harrison", "18" = "Jackson", "19" = "Jefferson", "20" = "Kanawha", 
+    "21" = "Lewis", "22" = "Lincoln", "23" = "Logan", "24" = "Marion", 
+    "25" = "Marshall", "26" = "Mason", "27" = "McDowell", "28" = "Mercer", 
+    "29" = "Mineral", "30" = "Mingo", "31" = "Monongalia", "32" = "Monroe", 
+    "33" = "Morgan", "34" = "Nicholas", "35" = "Ohio", "36" = "Pendleton", 
+    "37" = "Pleasants", "38" = "Pocahontas", "39" = "Preston", "40" = "Putnam", 
+    "41" = "Raleigh", "42" = "Randolph", "43" = "Ritchie", "44" = "Roane", 
+    "45" = "Summers", "46" = "Taylor", "47" = "Tucker", "48" = "Tyler", 
+    "49" = "Upshur", "50" = "Wayne", "51" = "Webster", "52" = "Wetzel", 
+    "53" = "Wirt", "54" = "Wood", "55" = "Wyoming"
+  ),
+  
+# Wisconsin (72 counties)
+  Wisconsin = c(
+    "1" = "Adams", "2" = "Ashland", "3" = "Barron", "4" = "Bayfield", 
+    "5" = "Brown", "6" = "Buffalo", "7" = "Burnett", "8" = "Calumet", 
+    "9" = "Chippewa", "10" = "Clark", "11" = "Columbia", "12" = "Crawford", 
+    "13" = "Dane", "14" = "Dodge", "15" = "Door", "16" = "Douglas", 
+    "17" = "Dunn", "18" = "Eau Claire", "19" = "Florence", "20" = "Fond du Lac", 
+    "21" = "Forest", "22" = "Grant", "23" = "Green", "24" = "Green Lake", 
+    "25" = "Iowa", "26" = "Iron", "27" = "Jackson", "28" = "Jefferson", 
+    "29" = "Juneau", "30" = "Kenosha", "31" = "Kewaunee", "32" = "La Crosse", 
+    "33" = "Lafayette", "34" = "Langlade", "35" = "Lincoln", "36" = "Manitowoc", 
+    "37" = "Marathon", "38" = "Marinette", "39" = "Marquette", "40" = "Menominee", 
+    "41" = "Milwaukee", "42" = "Monroe", "43" = "Oconto", "44" = "Oneida", 
+    "45" = "Outagamie", "46" = "Ozaukee", "47" = "Pepin", "48" = "Pierce", 
+    "49" = "Polk", "50" = "Portage", "51" = "Price", "52" = "Racine", 
+    "53" = "Richland", "54" = "Rock", "55" = "Rusk", "56" = "St. Croix", 
+    "57" = "Sauk", "58" = "Sawyer", "59" = "Shawano", "60" = "Sheboygan", 
+    "61" = "Taylor", "62" = "Trempealeau", "63" = "Vernon", "64" = "Vilas", 
+    "65" = "Walworth", "66" = "Washburn", "67" = "Washington", "68" = "Waukesha", 
+    "69" = "Waupaca", "70" = "Waushara", "71" = "Winnebago", "72" = "Wood"
+  ),
+  
+# Wyoming (23 counties)
+  Wyoming = c(
+    "1" = "Albany", "2" = "Big Horn", "3" = "Campbell", "4" = "Carbon", 
+    "5" = "Converse", "6" = "Crook", "7" = "Fremont", "8" = "Goshen", 
+    "9" = "Hot Springs", "10" = "Johnson", "11" = "Laramie", "12" = "Lincoln", 
+    "13" = "Natrona", "14" = "Niobrara", "15" = "Park", "16" = "Platte", 
+    "17" = "Sheridan", "18" = "Sublette", "19" = "Sweetwater", "20" = "Teton", 
+    "21" = "Uinta", "22" = "Washakie", "23" = "Weston"
+  )
+)
+```
+
+```{r Convert numbers to county names, include=TRUE}
+# =============================================================================
+# MAIN DATA PROCESSING FUNCTIONS
+# Convert numeric county codes to county names and create FIPS codes
+# =============================================================================
+
+# Function to convert numeric county codes to county names
+convert_county_codes <- function(data) {
+  
+  # Create the unified county variables using s21 (state) and county codes
+  data_with_counties <- data %>%
+    mutate(
+      state_name = s21,  # s21 contains the state of residence
+      county_code = case_when(
+        s21 == "Alaska" & !is.na(akc) ~ as.character(akc),
+        s21 == "Alabama" & !is.na(alc) ~ as.character(alc),
+        s21 == "Arizona" & !is.na(azc) ~ as.character(azc),
+        s21 == "Arkansas" & !is.na(arc) ~ as.character(arc),
+        s21 == "California" & !is.na(cac) ~ as.character(cac),
+        s21 == "Colorado" & !is.na(coc) ~ as.character(coc),
+        s21 == "Connecticut" & !is.na(ctc) ~ as.character(ctc),
+        s21 == "Delaware" & !is.na(dec) ~ as.character(dec),
+        s21 == "Florida" & !is.na(flc) ~ as.character(flc),
+        s21 == "Georgia" & !is.na(gac) ~ as.character(gac),
+        s21 == "Hawaii" & !is.na(hic) ~ as.character(hic),
+        s21 == "Iowa" & !is.na(iac) ~ as.character(iac),
+        s21 == "Idaho" & !is.na(idc) ~ as.character(idc),
+        s21 == "Illinois" & !is.na(ilc) ~ as.character(ilc),
+        s21 == "Indiana" & !is.na(inc) ~ as.character(inc),
+        s21 == "Kansas" & !is.na(ksc) ~ as.character(ksc),
+        s21 == "Kentucky" & !is.na(kyc) ~ as.character(kyc),
+        s21 == "Louisiana" & !is.na(lac) ~ as.character(lac),
+        s21 == "Massachusetts" & !is.na(mac) ~ as.character(mac),
+        s21 == "Maine" & !is.na(mec) ~ as.character(mec),
+        s21 == "Maryland" & !is.na(mdc) ~ as.character(mdc),
+        s21 == "Michigan" & !is.na(mic) ~ as.character(mic),
+        s21 == "Minnesota" & !is.na(mnc) ~ as.character(mnc),
+        s21 == "Missouri" & !is.na(moc) ~ as.character(moc),
+        s21 == "Mississippi" & !is.na(msc) ~ as.character(msc),
+        s21 == "Montana" & !is.na(mtc) ~ as.character(mtc),
+        s21 == "North Carolina" & !is.na(ncc) ~ as.character(ncc),
+        s21 == "North Dakota" & !is.na(ndc) ~ as.character(ndc),
+        s21 == "Nebraska" & !is.na(nec) ~ as.character(nec),
+        s21 == "New Hampshire" & !is.na(nhc) ~ as.character(nhc),
+        s21 == "New Mexico" & !is.na(nmc) ~ as.character(nmc),
+        s21 == "Nevada" & !is.na(nvc) ~ as.character(nvc),
+        s21 == "New Jersey" & !is.na(njc) ~ as.character(njc),
+        s21 == "New York" & !is.na(nyc) ~ as.character(nyc),
+        s21 == "Ohio" & !is.na(ohc) ~ as.character(ohc),
+        s21 == "Oklahoma" & !is.na(okc) ~ as.character(okc),
+        s21 == "Oregon" & !is.na(orc) ~ as.character(orc),
+        s21 == "Pennsylvania" & !is.na(pac) ~ as.character(pac),
+        s21 == "Rhode Island" & !is.na(ric) ~ as.character(ric),
+        s21 == "South Carolina" & !is.na(scc) ~ as.character(scc),
+        s21 == "South Dakota" & !is.na(sdc) ~ as.character(sdc),
+        s21 == "Tennessee" & !is.na(tnc) ~ as.character(tnc),
+        s21 == "Texas" & !is.na(txc) ~ as.character(txc),
+        s21 == "Utah" & !is.na(utc) ~ as.character(utc),
+        s21 == "Virginia" & !is.na(vac) ~ as.character(vac),
+        s21 == "Vermont" & !is.na(vtc) ~ as.character(vtc),
+        s21 == "Washington" & !is.na(wac) ~ as.character(wac),
+        s21 == "Wisconsin" & !is.na(wic) ~ as.character(wic),
+        s21 == "West Virginia" & !is.na(wvc) ~ as.character(wvc),
+        s21 == "Wyoming" & !is.na(wyc) ~ as.character(wyc),
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    # Convert numeric codes to county names using lookup tables
+    rowwise() %>%
+    mutate(
+      county_name = if (!is.na(county_code) && !is.na(state_name) && 
+                        state_name %in% names(county_lookups)) {
+        county_lookups[[state_name]][county_code]
+      } else {
+        NA_character_
+      }
+    ) %>%
+    ungroup()
+  
+  return(data_with_counties)
+}
+
+# Function to create FIPS codes and merge with external data
+create_fips_codes <- function(data_with_counties) {
+  
+  # Get county FIPS data from tigris
+  message("Downloading county FIPS data from Census Bureau...")
+  county_fips <- counties(cb = TRUE) %>%
+    st_drop_geometry() %>%  # Remove spatial geometry for faster processing
+    select(STATEFP, COUNTYFP, STATE_NAME = NAME, COUNTY_NAME = NAMELSAD) %>%
+    mutate(
+      FIPS = paste0(STATEFP, COUNTYFP),  # Create 5-digit FIPS code
+      # Clean county names for better matching
+      COUNTY_CLEAN = str_remove_all(COUNTY_NAME, " County| Parish| Borough| Census Area"),
+      COUNTY_CLEAN = str_trim(COUNTY_CLEAN)
+    )
+  
+  # Create state name mapping for better matching
+  state_name_mapping <- c(
+    "North Carolina" = "North Carolina",
+    "North Dakota" = "North Dakota", 
+    "South Carolina" = "South Carolina",
+    "South Dakota" = "South Dakota",
+    "West Virginia" = "West Virginia",
+    "New Hampshire" = "New Hampshire",
+    "New Jersey" = "New Jersey",
+    "New Mexico" = "New Mexico",
+    "New York" = "New York",
+    "Rhode Island" = "Rhode Island"
+  )
+  
+  # Merge survey data with FIPS codes
+  data_with_fips <- data_with_counties %>%
+    filter(!is.na(county_name) & !is.na(state_name)) %>%
+    # Clean county names for matching
+    mutate(
+      county_clean = str_remove_all(county_name, " County| Parish| Borough| Census Area"),
+      county_clean = str_trim(county_clean),
+      state_clean = if_else(state_name %in% names(state_name_mapping), 
+                           state_name_mapping[state_name], 
+                           state_name)
+    ) %>%
+    # Join with FIPS data
+    left_join(
+      county_fips, 
+      by = c("county_clean" = "COUNTY_CLEAN", "state_clean" = "STATE_NAME")
+    ) %>%
+    # Handle special cases that might not match exactly
+    mutate(
+      match_quality = case_when(
+        !is.na(FIPS) ~ "exact_match",
+        is.na(FIPS) ~ "no_match"
+      )
+    )
+  
+  # Report matching statistics
+  match_stats <- data_with_fips %>%
+    count(match_quality) %>%
+    mutate(percent = round(n / sum(n) * 100, 1))
+  
+  message("FIPS matching results:")
+  print(match_stats)
+  
+  return(data_with_fips)
+}
+
+# =============================================================================
+# MAIN PROCESSING PIPELINE
+# Complete workflow to process survey data and add county information
+# =============================================================================
+
+process_survey_data <- function(survey_data) {
+  
+  message("Starting county lookup processing...")
+  message("Step 1: Converting numeric county codes to county names...")
+  
+  # Step 1: Convert county codes to names
+  data_with_counties <- convert_county_codes(survey_data)
+  
+  # Report conversion statistics
+  county_stats <- data_with_counties %>%
+    summarise(
+      total_records = n(),
+      records_with_state = sum(!is.na(state_name)),
+      records_with_county_code = sum(!is.na(county_code)),
+      records_with_county_name = sum(!is.na(county_name)),
+      percent_with_county = round(sum(!is.na(county_name)) / n() * 100, 1)
+    )
+  
+  message(paste0("County conversion results: ", 
+                county_stats$records_with_county_name, " out of ", 
+                county_stats$total_records, " records (", 
+                county_stats$percent_with_county, "%) have county names"))
+  
+  message("Step 2: Creating FIPS codes and matching with Census data...")
+  
+  # Step 2: Create FIPS codes
+  final_data <- create_fips_codes(data_with_counties)
+  
+  message("Processing complete!")
+  
+  return(final_data)
+}
+
+
+```

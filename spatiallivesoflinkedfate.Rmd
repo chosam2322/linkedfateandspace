@@ -18,6 +18,7 @@ library(margins)
 library(scales)
 library(nnet)
 library(broom)
+library(tigris)
 ```
 
 ```{r Step 0: data ingestion, include=TRUE}
@@ -671,6 +672,7 @@ cat("t-value:", round(civic_geo_final[3], 3), "\n")
 cat("p-value:", format(civic_geo_final[4], scientific = TRUE), "\n")
 cat("95% CI: [", round(ci_geo_final[1], 5), ",", round(ci_geo_final[2], 5), "]\n")
 ```
+
 
 
 
