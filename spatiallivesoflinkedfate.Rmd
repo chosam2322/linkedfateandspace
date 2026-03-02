@@ -24,6 +24,7 @@ library(tigris)
 ```{r Step 0: data ingestion, include=TRUE}
 cmps2024 <- read_dta(here("Data_Files","cmps2024_primaryadult_091025.dta"))
 civicorgdata <- read_csv(here("dataverse_files","mma_sc_demo.csv"))
+cmps_merged <- read_csv(here("cmps_merged_civicorgdata.csv"))
 
 ```
 

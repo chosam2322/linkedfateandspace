@@ -19,6 +19,7 @@ library(scales)
 library(nnet)
 library(broom)
 library(tigris)
+library(sf)
 options(tigris_use_cache = TRUE)  # Cache tigris data for faster subsequent runs
 # Suppress tigris messages
 options(tigris_quiet = TRUE)
@@ -1035,64 +1036,101 @@ county_lookups <- list(
 # Convert numeric county codes to county names and create FIPS codes
 # =============================================================================
 
+state_lookup <- c(
+  "1" = "Alabama", "2" = "Alaska", "3" = "Arizona", "4" = "Arkansas",
+  "5" = "California", "6" = "Colorado", "7" = "Connecticut", "8" = "Delaware",
+  "9" = "Florida", "10" = "Georgia", "11" = "Hawaii", "12" = "Idaho",
+  "13" = "Illinois", "14" = "Indiana", "15" = "Iowa", "16" = "Kansas",
+  "17" = "Kentucky", "18" = "Louisiana", "19" = "Maine", "20" = "Maryland",
+  "21" = "Massachusetts", "22" = "Michigan", "23" = "Minnesota", "24" = "Mississippi",
+  "25" = "Missouri", "26" = "Montana", "27" = "Nebraska", "28" = "Nevada",
+  "29" = "New Hampshire", "30" = "New Jersey", "31" = "New Mexico", "32" = "New York",
+  "33" = "North Carolina", "34" = "North Dakota", "35" = "Ohio", "36" = "Oklahoma",
+  "37" = "Oregon", "38" = "Pennsylvania", "39" = "Rhode Island", "40" = "South Carolina",
+  "41" = "South Dakota", "42" = "Tennessee", "43" = "Texas", "44" = "Utah",
+  "45" = "Vermont", "46" = "Virginia", "47" = "Washington", "48" = "West Virginia",
+  "49" = "Wisconsin", "50" = "Wyoming"
+)
+
 # Function to convert numeric county codes to county names
+# Updated convert_county_codes function
 convert_county_codes <- function(data) {
   
-  # Create the unified county variables using s21 (state) and county codes
   data_with_counties <- data %>%
     mutate(
-      state_name = s21,  # s21 contains the state of residence
+      # Convert s21 numeric to state name using lookup
+      state_name = state_lookup[as.character(s21)],
+      # Convert all county code variables to character
+      akc = as.character(akc), alc = as.character(alc), azc = as.character(azc),
+      arc = as.character(arc), cac = as.character(cac), coc = as.character(coc),
+      ctc = as.character(ctc), dec = as.character(dec), flc = as.character(flc),
+      gac = as.character(gac), hic = as.character(hic), iac = as.character(iac),
+      idc = as.character(idc), ilc = as.character(ilc), inc = as.character(inc),
+      ksc = as.character(ksc), kyc = as.character(kyc), lac = as.character(lac),
+      mac = as.character(mac), mec = as.character(mec), mdc = as.character(mdc),
+      mic = as.character(mic), mnc = as.character(mnc), moc = as.character(moc),
+      msc = as.character(msc), mtc = as.character(mtc), ncc = as.character(ncc),
+      ndc = as.character(ndc), nec = as.character(nec), nhc = as.character(nhc),
+      nmc = as.character(nmc), nvc = as.character(nvc), njc = as.character(njc),
+      nyc = as.character(nyc), ohc = as.character(ohc), okc = as.character(okc),
+      orc = as.character(orc), pac = as.character(pac), ric = as.character(ric),
+      scc = as.character(scc), sdc = as.character(sdc), tnc = as.character(tnc),
+      txc = as.character(txc), utc = as.character(utc), vac = as.character(vac),
+      vtc = as.character(vtc), wac = as.character(wac), wic = as.character(wic),
+      wvc = as.character(wvc), wyc = as.character(wyc)
+    ) %>%
+    mutate(
       county_code = case_when(
-        s21 == "Alaska" & !is.na(akc) ~ as.character(akc),
-        s21 == "Alabama" & !is.na(alc) ~ as.character(alc),
-        s21 == "Arizona" & !is.na(azc) ~ as.character(azc),
-        s21 == "Arkansas" & !is.na(arc) ~ as.character(arc),
-        s21 == "California" & !is.na(cac) ~ as.character(cac),
-        s21 == "Colorado" & !is.na(coc) ~ as.character(coc),
-        s21 == "Connecticut" & !is.na(ctc) ~ as.character(ctc),
-        s21 == "Delaware" & !is.na(dec) ~ as.character(dec),
-        s21 == "Florida" & !is.na(flc) ~ as.character(flc),
-        s21 == "Georgia" & !is.na(gac) ~ as.character(gac),
-        s21 == "Hawaii" & !is.na(hic) ~ as.character(hic),
-        s21 == "Iowa" & !is.na(iac) ~ as.character(iac),
-        s21 == "Idaho" & !is.na(idc) ~ as.character(idc),
-        s21 == "Illinois" & !is.na(ilc) ~ as.character(ilc),
-        s21 == "Indiana" & !is.na(inc) ~ as.character(inc),
-        s21 == "Kansas" & !is.na(ksc) ~ as.character(ksc),
-        s21 == "Kentucky" & !is.na(kyc) ~ as.character(kyc),
-        s21 == "Louisiana" & !is.na(lac) ~ as.character(lac),
-        s21 == "Massachusetts" & !is.na(mac) ~ as.character(mac),
-        s21 == "Maine" & !is.na(mec) ~ as.character(mec),
-        s21 == "Maryland" & !is.na(mdc) ~ as.character(mdc),
-        s21 == "Michigan" & !is.na(mic) ~ as.character(mic),
-        s21 == "Minnesota" & !is.na(mnc) ~ as.character(mnc),
-        s21 == "Missouri" & !is.na(moc) ~ as.character(moc),
-        s21 == "Mississippi" & !is.na(msc) ~ as.character(msc),
-        s21 == "Montana" & !is.na(mtc) ~ as.character(mtc),
-        s21 == "North Carolina" & !is.na(ncc) ~ as.character(ncc),
-        s21 == "North Dakota" & !is.na(ndc) ~ as.character(ndc),
-        s21 == "Nebraska" & !is.na(nec) ~ as.character(nec),
-        s21 == "New Hampshire" & !is.na(nhc) ~ as.character(nhc),
-        s21 == "New Mexico" & !is.na(nmc) ~ as.character(nmc),
-        s21 == "Nevada" & !is.na(nvc) ~ as.character(nvc),
-        s21 == "New Jersey" & !is.na(njc) ~ as.character(njc),
-        s21 == "New York" & !is.na(nyc) ~ as.character(nyc),
-        s21 == "Ohio" & !is.na(ohc) ~ as.character(ohc),
-        s21 == "Oklahoma" & !is.na(okc) ~ as.character(okc),
-        s21 == "Oregon" & !is.na(orc) ~ as.character(orc),
-        s21 == "Pennsylvania" & !is.na(pac) ~ as.character(pac),
-        s21 == "Rhode Island" & !is.na(ric) ~ as.character(ric),
-        s21 == "South Carolina" & !is.na(scc) ~ as.character(scc),
-        s21 == "South Dakota" & !is.na(sdc) ~ as.character(sdc),
-        s21 == "Tennessee" & !is.na(tnc) ~ as.character(tnc),
-        s21 == "Texas" & !is.na(txc) ~ as.character(txc),
-        s21 == "Utah" & !is.na(utc) ~ as.character(utc),
-        s21 == "Virginia" & !is.na(vac) ~ as.character(vac),
-        s21 == "Vermont" & !is.na(vtc) ~ as.character(vtc),
-        s21 == "Washington" & !is.na(wac) ~ as.character(wac),
-        s21 == "Wisconsin" & !is.na(wic) ~ as.character(wic),
-        s21 == "West Virginia" & !is.na(wvc) ~ as.character(wvc),
-        s21 == "Wyoming" & !is.na(wyc) ~ as.character(wyc),
+        state_name == "Alaska" & !is.na(akc) & akc != "NA" ~ akc,
+        state_name == "Alabama" & !is.na(alc) & alc != "NA" ~ alc,
+        state_name == "Arizona" & !is.na(azc) & azc != "NA" ~ azc,
+        state_name == "Arkansas" & !is.na(arc) & arc != "NA" ~ arc,
+        state_name == "California" & !is.na(cac) & cac != "NA" ~ cac,
+        state_name == "Colorado" & !is.na(coc) & coc != "NA" ~ coc,
+        state_name == "Connecticut" & !is.na(ctc) & ctc != "NA" ~ ctc,
+        state_name == "Delaware" & !is.na(dec) & dec != "NA" ~ dec,
+        state_name == "Florida" & !is.na(flc) & flc != "NA" ~ flc,
+        state_name == "Georgia" & !is.na(gac) & gac != "NA" ~ gac,
+        state_name == "Hawaii" & !is.na(hic) & hic != "NA" ~ hic,
+        state_name == "Iowa" & !is.na(iac) & iac != "NA" ~ iac,
+        state_name == "Idaho" & !is.na(idc) & idc != "NA" ~ idc,
+        state_name == "Illinois" & !is.na(ilc) & ilc != "NA" ~ ilc,
+        state_name == "Indiana" & !is.na(inc) & inc != "NA" ~ inc,
+        state_name == "Kansas" & !is.na(ksc) & ksc != "NA" ~ ksc,
+        state_name == "Kentucky" & !is.na(kyc) & kyc != "NA" ~ kyc,
+        state_name == "Louisiana" & !is.na(lac) & lac != "NA" ~ lac,
+        state_name == "Massachusetts" & !is.na(mac) & mac != "NA" ~ mac,
+        state_name == "Maine" & !is.na(mec) & mec != "NA" ~ mec,
+        state_name == "Maryland" & !is.na(mdc) & mdc != "NA" ~ mdc,
+        state_name == "Michigan" & !is.na(mic) & mic != "NA" ~ mic,
+        state_name == "Minnesota" & !is.na(mnc) & mnc != "NA" ~ mnc,
+        state_name == "Missouri" & !is.na(moc) & moc != "NA" ~ moc,
+        state_name == "Mississippi" & !is.na(msc) & msc != "NA" ~ msc,
+        state_name == "Montana" & !is.na(mtc) & mtc != "NA" ~ mtc,
+        state_name == "North Carolina" & !is.na(ncc) & ncc != "NA" ~ ncc,
+        state_name == "North Dakota" & !is.na(ndc) & ndc != "NA" ~ ndc,
+        state_name == "Nebraska" & !is.na(nec) & nec != "NA" ~ nec,
+        state_name == "New Hampshire" & !is.na(nhc) & nhc != "NA" ~ nhc,
+        state_name == "New Mexico" & !is.na(nmc) & nmc != "NA" ~ nmc,
+        state_name == "Nevada" & !is.na(nvc) & nvc != "NA" ~ nvc,
+        state_name == "New Jersey" & !is.na(njc) & njc != "NA" ~ njc,
+        state_name == "New York" & !is.na(nyc) & nyc != "NA" ~ nyc,
+        state_name == "Ohio" & !is.na(ohc) & ohc != "NA" ~ ohc,
+        state_name == "Oklahoma" & !is.na(okc) & okc != "NA" ~ okc,
+        state_name == "Oregon" & !is.na(orc) & orc != "NA" ~ orc,
+        state_name == "Pennsylvania" & !is.na(pac) & pac != "NA" ~ pac,
+        state_name == "Rhode Island" & !is.na(ric) & ric != "NA" ~ ric,
+        state_name == "South Carolina" & !is.na(scc) & scc != "NA" ~ scc,
+        state_name == "South Dakota" & !is.na(sdc) & sdc != "NA" ~ sdc,
+        state_name == "Tennessee" & !is.na(tnc) & tnc != "NA" ~ tnc,
+        state_name == "Texas" & !is.na(txc) & txc != "NA" ~ txc,
+        state_name == "Utah" & !is.na(utc) & utc != "NA" ~ utc,
+        state_name == "Virginia" & !is.na(vac) & vac != "NA" ~ vac,
+        state_name == "Vermont" & !is.na(vtc) & vtc != "NA" ~ vtc,
+        state_name == "Washington" & !is.na(wac) & wac != "NA" ~ wac,
+        state_name == "Wisconsin" & !is.na(wic) & wic != "NA" ~ wic,
+        state_name == "West Virginia" & !is.na(wvc) & wvc != "NA" ~ wvc,
+        state_name == "Wyoming" & !is.na(wyc) & wyc != "NA" ~ wyc,
         TRUE ~ NA_character_
       )
     ) %>%
@@ -1111,34 +1149,31 @@ convert_county_codes <- function(data) {
   return(data_with_counties)
 }
 
-# Function to create FIPS codes and merge with external data
+
+# =============================================================================
+# FIPS CODE CREATION FUNCTION
+# =============================================================================
+
+# Fixed FIPS CODE CREATION FUNCTION using base R approach
 create_fips_codes <- function(data_with_counties) {
   
   # Get county FIPS data from tigris
   message("Downloading county FIPS data from Census Bureau...")
-  county_fips <- counties(cb = TRUE) %>%
-    st_drop_geometry() %>%  # Remove spatial geometry for faster processing
-    select(STATEFP, COUNTYFP, STATE_NAME = NAME, COUNTY_NAME = NAMELSAD) %>%
+  
+  # Get the data and convert to regular data frame
+  county_fips_raw <- counties(cb = TRUE)
+  county_fips_df <- as.data.frame(county_fips_raw)
+  
+  # Select columns using base R and create FIPS codes
+  county_fips <- county_fips_df[, c("STATEFP", "COUNTYFP", "STATE_NAME", "NAMELSAD")]
+  
+  county_fips <- county_fips %>%
     mutate(
       FIPS = paste0(STATEFP, COUNTYFP),  # Create 5-digit FIPS code
       # Clean county names for better matching
-      COUNTY_CLEAN = str_remove_all(COUNTY_NAME, " County| Parish| Borough| Census Area"),
+      COUNTY_CLEAN = str_remove_all(NAMELSAD, " County| Parish| Borough| Census Area"),
       COUNTY_CLEAN = str_trim(COUNTY_CLEAN)
     )
-  
-  # Create state name mapping for better matching
-  state_name_mapping <- c(
-    "North Carolina" = "North Carolina",
-    "North Dakota" = "North Dakota", 
-    "South Carolina" = "South Carolina",
-    "South Dakota" = "South Dakota",
-    "West Virginia" = "West Virginia",
-    "New Hampshire" = "New Hampshire",
-    "New Jersey" = "New Jersey",
-    "New Mexico" = "New Mexico",
-    "New York" = "New York",
-    "Rhode Island" = "Rhode Island"
-  )
   
   # Merge survey data with FIPS codes
   data_with_fips <- data_with_counties %>%
@@ -1146,15 +1181,12 @@ create_fips_codes <- function(data_with_counties) {
     # Clean county names for matching
     mutate(
       county_clean = str_remove_all(county_name, " County| Parish| Borough| Census Area"),
-      county_clean = str_trim(county_clean),
-      state_clean = if_else(state_name %in% names(state_name_mapping), 
-                           state_name_mapping[state_name], 
-                           state_name)
+      county_clean = str_trim(county_clean)
     ) %>%
     # Join with FIPS data
     left_join(
       county_fips, 
-      by = c("county_clean" = "COUNTY_CLEAN", "state_clean" = "STATE_NAME")
+      by = c("county_clean" = "COUNTY_CLEAN", "state_name" = "STATE_NAME")
     ) %>%
     # Handle special cases that might not match exactly
     mutate(
@@ -1174,10 +1206,8 @@ create_fips_codes <- function(data_with_counties) {
   
   return(data_with_fips)
 }
-
 # =============================================================================
 # MAIN PROCESSING PIPELINE
-# Complete workflow to process survey data and add county information
 # =============================================================================
 
 process_survey_data <- function(survey_data) {
@@ -1213,5 +1243,129 @@ process_survey_data <- function(survey_data) {
   return(final_data)
 }
 
+# =============================================================================
+# TROUBLESHOOTING FUNCTIONS
+# =============================================================================
 
+# Function to check for missing or invalid county codes
+check_county_coverage <- function(survey_data) {
+  
+  coverage_report <- survey_data %>%
+    count(s21, name = "total_records") %>%
+    mutate(state_name = as.character(s21)) %>%
+    select(-s21)
+  
+  message("Records by state:")
+  print(coverage_report)
+  
+  return(coverage_report)
+}
+
+# Function to identify unmatched counties
+identify_unmatched_counties <- function(processed_data) {
+  
+  unmatched <- processed_data %>%
+    filter(match_quality == "no_match" | is.na(FIPS)) %>%
+    count(state_name, county_name, county_code, sort = TRUE)
+  
+  if (nrow(unmatched) > 0) {
+    message("Unmatched counties requiring manual review:")
+    print(unmatched)
+  } else {
+    message("All counties successfully matched!")
+  }
+  
+  return(unmatched)
+}
+
+# Test the system
+message("County lookup system loaded successfully!")
+message("Run: cmps_merged <- process_survey_data(cmps2024)")
+
+```
+
+```{r Run the processing pipeline, include=TRUE}
+cmps_merged <- process_survey_data(cmps2024)
+```
+
+```{r Update unmatched counties, include=TRUE}
+# Create manual FIPS lookup for unmatched counties
+manual_fips_lookup <- tribble(
+  ~county_clean, ~state_name, ~FIPS,
+  "Anchorage", "Alaska", "02020",
+  "Fairfield", "Connecticut", "09001",
+  "New Haven", "Connecticut", "09009", 
+  "Windham", "Connecticut", "09015",
+  "Hartford", "Connecticut", "09003",
+  "Middlesex", "Connecticut", "09007",
+  "Litchfield", "Connecticut", "09005",
+  "New London", "Connecticut", "09011",
+  "Sitka", "Alaska", "02220"
+)
+
+# Function to add manual FIPS codes to unmatched records
+add_manual_fips <- function(processed_data) {
+  
+  # First, update records that didn't match
+  updated_data <- processed_data %>%
+    # Clean county names for manual matching
+    mutate(
+      county_clean_manual = str_remove_all(county_name, " County| Parish| Borough| Census Area"),
+      county_clean_manual = str_trim(county_clean_manual)
+    ) %>%
+    # Add manual FIPS codes for unmatched records
+    left_join(
+      manual_fips_lookup, 
+      by = c("county_clean_manual" = "county_clean", "state_name" = "state_name"),
+      suffix = c("", "_manual")
+    ) %>%
+    # Use manual FIPS where original is missing
+    mutate(
+      FIPS = coalesce(FIPS, FIPS_manual),
+      STATEFP = coalesce(STATEFP, str_sub(FIPS_manual, 1, 2)),
+      COUNTYFP = coalesce(COUNTYFP, str_sub(FIPS_manual, 3, 5)),
+      match_quality = case_when(
+        !is.na(FIPS) & is.na(FIPS_manual) ~ match_quality,  # Keep original
+        !is.na(FIPS_manual) ~ "manual_match",               # Manual match
+        TRUE ~ "no_match"                                    # Still no match
+      )
+    )
+  
+  # Remove temporary columns using base R
+  cols_to_remove <- c("county_clean_manual", "FIPS_manual")
+  updated_data <- updated_data[, !names(updated_data) %in% cols_to_remove]
+  
+  # Report updated matching statistics
+  match_stats <- updated_data %>%
+    filter(!is.na(county_name)) %>%
+    count(match_quality) %>%
+    mutate(percent = round(n / sum(n) * 100, 1))
+  
+  message("Updated FIPS matching results:")
+  print(match_stats)
+  
+  return(updated_data)
+}
+
+```
+
+```{r Update dataset with updated FIPS codes, include=TRUE}
+# Apply the manual fixes
+cmps_merged_fixed <- add_manual_fips(cmps_merged)
+
+# Check remaining unmatched counties
+remaining_unmatched <- cmps_merged_fixed %>%
+  filter(match_quality == "no_match" & !is.na(county_name)) %>%
+  count(state_name, county_name, county_code, sort = TRUE)
+
+message("Remaining unmatched counties:")
+print(remaining_unmatched)
+```
+
+```{r Merge with Civic Organization Data, include=TRUE}
+# Merge the survey data with civic organization data
+cmps_merged_final <- cmps_merged_fixed %>%
+  left_join(civicorgdata, by = "FIPS")
+
+write.csv(cmps_merged_final, here("cmps_merged_civicorgdata.csv"), row.names = FALSE)
 ```
