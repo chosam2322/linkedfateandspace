@@ -28,7 +28,7 @@ options(tigris_quiet = TRUE)
 ```{r Step 0: data ingestion, include=TRUE}
 cmps2024 <- read_dta(here("cmps2024_primaryadult_091025.dta"))
 civicorgdata <- read_csv(here("mma_sc_demo.csv"))
-countylookuptable <- read_csv(here("State,_County_and_City_FIPS_Reference_Table_20260402.csv"))
+countylookuptable <- read_csv(here("State,_County_and_City_FIPS_Reference_Table_20260403.csv"))
 ```
 
 ```{r Step 1: Checking Data for Missingness on County, include=TRUE}
@@ -41,7 +41,50 @@ sum(cmps2024$no_county_response, na.rm = TRUE)
 
 ```
 
-```{r Step 2: Get County Code Numbers for Respondents, include=TRUE}
+```{r Step 2: Create lookup tables for state names, include=TRUE}
+# Create state name mapping (assuming standard FIPS state codes)
+state_mapping <- c(
+  "1" = "Alabama", "2" = "Alaska", "3" = "Arizona", "4" = "Arkansas", "5" = "California",
+  "6" = "Colorado", "7" = "Connecticut", "8" = "Delaware", "10" = "Florida", "11" = "Georgia",
+  "12" = "Hawaii", "13" = "Idaho", "14" = "Illinois", "15" = "Indiana", "16" = "Iowa",
+  "17" = "Kansas", "18" = "Kentucky", "19" = "Louisiana", "20" = "Maine", "21" = "Maryland",
+  "22" = "Massachusetts", "23" = "Michigan", "24" = "Minnesota", "25" = "Mississippi", "26" = "Missouri",
+  "27" = "Montana", "28" = "Nebraska", "29" = "Nevada", "30" = "New Hampshire", "31" = "New Jersey",
+  "32" = "New Mexico", "33" = "New York", "34" = "North Carolina", "35" = "North Dakota", "36" = "Ohio",
+  "37" = "Oklahoma", "38" = "Oregon", "39" = "Pennsylvania", "40" = "Rhode Island", "41" = "South Carolina",
+  "42" = "South Dakota", "43" = "Tennessee", "44" = "Texas", "45" = "Utah", "46" = "Vermont",
+  "47" = "Virginia", "48" = "Washington", "49" = "West Virginia", "50" = "Wisconsin", "51" = "Wyoming"
+)
+```
+
+```{r Step 3: Convert numbers to state names, include=TRUE}
+# Initialize the column
+cmps2024$state_name <- NA_character_
+
+# Fill it in with a loop
+for(i in 1:nrow(cmps2024)) {
+  state_num <- cmps2024$s21[i]
+  
+  if(!is.na(state_num)) {
+    state_key <- as.character(state_num)
+    
+    if(state_key %in% names(state_mapping)) {
+      cmps2024$state_name[i] <- state_mapping[state_key]
+    }
+  }
+}
+
+# Check how many got filled in
+sum(!is.na(cmps2024$state_name))
+
+# Look at some examples
+unique(cmps2024[c("s21", "state_name")])[order(unique(cmps2024[c("s21", "state_name")])$s21), ]
+
+cmps2024 <- cmps2024 %>%
+  mutate(state_name = ifelse(is.na(state_name), NA_character_, toupper(state_name)))
+```
+
+```{r Step 4: Get County Code Numbers for Respondents, include=TRUE}
 # Function to get county code based on state
 get_county_code <- function(data) {
   data %>%
@@ -106,7 +149,9 @@ get_county_code <- function(data) {
 cmps2024 <- get_county_code(cmps2024)
 ```
 
-```{r Step 3: Create lookup tables for county names, include=TRUE}
+
+
+```{r Step 5: Create lookup tables for county names, include=TRUE}
 # Create lookup tables for each state
 county_mapping <- list(
   # Alabama (67 counties)
@@ -1110,7 +1155,7 @@ county_mapping <- list(
 )
 ```
 
-```{r Step 4 Convert numbers to county names, include=TRUE}
+```{r Step 6: Convert numbers to county names, include=TRUE}
 # Initialize the column
 cmps2024$county_name <- NA_character_
 
@@ -1140,34 +1185,201 @@ cmps2024 <- cmps2024 %>%
   mutate(county_name = ifelse(is.na(county_name), NA_character_, toupper(county_name)))
 ```
 
-```{r Step 5 Merge County Lookup Table to CMPS Data, include=TRUE}
+```{r Step 7: Merge County Lookup Table to CMPS Data, include=TRUE}
 
 # Create a clean lookup from your countylookuptable
 county_fips_lookup <- countylookuptable %>%
   distinct(`State Name`, `County Name`, `StCnty FIPS Code`) %>%
   filter(!is.na(`State Name`) & !is.na(`County Name`) & !is.na(`StCnty FIPS Code`))
 
-# Also need a state lookup to get state names
-state_fips_lookup <- countylookuptable %>%
-  distinct(`State FIPS Code`, `State Name`) %>%
-  filter(!is.na(`State FIPS Code`) & !is.na(`State Name`))
 
-# Add state names to your data
 cmps2024 <- cmps2024 %>%
-  mutate(s21_numeric = as.numeric(s21)) %>%
-  left_join(state_fips_lookup, by = c("s21_numeric" = "State FIPS Code"))
+  left_join(county_fips_lookup,
+            by = c("state_name" = "State Name","county_name" = "County Name"))
 
-# Now match county names to get FIPS codes  
 cmps2024 <- cmps2024 %>%
-  left_join(county_fips_lookup, 
-            by = c("State Name" = "State Name", "county_name" = "County Name")) %>%
-  rename(fips = `StCnty FIPS Code`)
+  distinct(uuid, .keep_all = TRUE)
+
+cmps2024 <- cmps2024 %>%
+  rename(FIPS = "StCnty FIPS Code")
+
 ```
 
-```{r Merge with Civic Organization Data, include=TRUE}
+
+```{r Step 9: Merge with Civic Organization Data, include=TRUE}
 # Merge the survey data with civic organization data
-cmps_merged_final <- cmps_merged_fixed %>%
+cmps_counties_merged_2024 <- cmps2024 %>%
   left_join(civicorgdata, by = "FIPS")
 
-write.csv(cmps_merged_final, here("cmps_merged_civicorgdata.csv"), row.names = FALSE)
+```
+
+```{r Step 10: Check Data for Missingness Issues, include=TRUE}
+sum(is.na(cmps_counties_merged_2024$FIPS))
+#236 entries missing a FIPS code - which is a good, small number 
+  
+unmatched_cases <- cmps_counties_merged_2024 %>%
+  filter(!is.na(county_name) & is.na(FIPS)) %>%
+  count(state_name, county_name, sort = TRUE) %>%
+  arrange(state_name)
+
+print("Counties that didn't match to FIPS:")
+print(unmatched_cases)
+
+#Manual entry of entries with missing fips code in merge but available fips codes in the civic org dataset
+manual_fips_mapping <- tribble(
+  ~state_name, ~county_name, ~correct_fips,
+  "ALABAMA", "ST. CLAIR", "01115",  
+  "ALABAMA", "DEKALB", "01049", 
+  "ALASKA", "MATANUSKA-SUSITNA", "02170", 
+  "FLORIDA", "ST. LUCIE", "12111",
+  "FLORIDA", "ST. JOHNS", "12109",
+  "FLORIDA", "DESOTO", "12027",
+  "GEORGIA", "DEKALB", "13089",
+  "ILLINOIS", "DUPAGE", "17043",
+  "ILLINOIS", "LASALLE", "17099",
+  "ILLINOIS", "DEKALB", "17037", 
+  "ILLINOIS", "DEWITT", "17039",
+  "INDIANA", "ST. JOSEPH", "18141",
+  "INDIANA", "LAPORTE", "18091",
+  "LOUISIANA", "ST. TAMMANY", "22103",
+  "LOUISIANA", "ST. BERNARD", "22087",
+  "LOUISIANA", "ST. LANDRY", "22097",
+  "LOUISIANA", "ST. CHARLES", "22089",
+  "LOUISIANA", "ST. JAMES", "22093",
+  "LOUISIANA", "ST. JOHN THE BAPTIST", "22095",
+  "LOUISIANA", "ST. MARY", "22101",
+  "MICHIGAN", "ST. CLAIR", "26147",
+  "MINNESOTA", "ST. LOUIS", "27137",
+  "MINNESOTA", "LESUEUR", "27079",
+  "MISSISSIPPI", "DESOTO", "28033",
+  "MISSOURI", "ST. CHARLES", "29183",
+  "NEW MEXICO", "DOÑA ANA", "35013",
+  "SOUTH DAKOTA", "OGLALA LAKOTA", "OGLALA LAKOTA",
+  "TEXAS", "DEWITT", "48123",
+  "VIRGINIA", "ROANOKE COUNTY", "51161",
+  "VIRGINIA", "FRANKLIN COUNTY", "51067",
+  "VIRGINIA", "RICHMOND COUNTY", "51159",
+  "VIRGINIA", "FAIRFAX COUNTY", "51059",
+  "VIRGINIA", "FAIRFAX CITY", "51600",
+  "WISCONSIN", "ST. CROIX", "55109"
+)
+
+
+# Loop through each row of the manual mapping to update FIPS codes
+for(i in 1:nrow(manual_fips_mapping)) {
+  
+  # Get the values for this mapping
+  target_state <- manual_fips_mapping$state_name[i]
+  target_county <- manual_fips_mapping$county_name[i]
+  correct_fips <- manual_fips_mapping$correct_fips[i]
+  
+  # Update the FIPS code where state_name and county_name match
+  cmps_counties_merged_2024 <- cmps_counties_merged_2024 %>%
+    mutate(
+      FIPS = case_when(
+        state_name == target_state & county_name == target_county ~ correct_fips,
+        TRUE ~ FIPS  # Keep original value otherwise
+      )
+    )
+}
+
+# Now re-merge with civic org data for the newly filled FIPS codes
+cmps_counties_merged_2024 <- cmps_counties_merged_2024 %>%
+  mutate(opc = NULL, socialcap = NULL, sk2014 = NULL, civic_organizations_county = NULL, race_per_white_nonhispanic = NULL, per_poverty = NULL, college_educ = NULL) %>%  # Remove old civic org columns to avoid duplicates
+  left_join(civicorgdata, by = "FIPS")
+
+#Check Your Work One Last Time
+sum(is.na(cmps_counties_merged_2024$FIPS))
+
+  
+unmatched_cases_secondpass <- cmps_counties_merged_2024 %>%
+  filter(is.na(FIPS)) %>%
+  select(state_name, county_name, )
+  arrange(state_name)
+
+print("Counties that didn't match to FIPS:")
+print(unmatched_cases_secondpass)
+#Turns out the missing rows are from Williamsburg City, VA and Washington DC so I'll manually hand code one last loop 
+# Step 1: Fix Williamsburg City VA
+cmps_counties_merged_2024 <- cmps_counties_merged_2024 %>%
+  mutate(
+    FIPS = case_when(
+      state_name == "Virginia" & str_detect(toupper(county_name), "WILLIAMSBURG") ~ "51830",
+      TRUE ~ FIPS
+    )
+  )
+
+# Step 2: Handle DC cases where s21 = 9
+cmps_counties_merged_2024 <- cmps_counties_merged_2024 %>%
+  mutate(
+    # Fill in county_name for DC
+    county_name = case_when(
+      s21 == 9 ~ "WASHINGTON D.C.",
+      TRUE ~ county_name
+    ),
+    
+    # Fill in state_name for DC  
+    state_name = case_when(
+      s21 == 9 ~ "District of Columbia",
+      TRUE ~ state_name
+    ),
+    
+    # Fill in FIPS for DC
+    FIPS = case_when(
+      s21 == 9 ~ "11001",
+      TRUE ~ FIPS
+    )
+  )
+
+# Check results
+cat("Remaining missing FIPS codes:", sum(is.na(cmps_counties_merged_2024$fips)), "\n")
+cat("DC cases filled:", sum(cmps_counties_merged_2024$s21 == 9, na.rm = TRUE), "\n")
+
+
+#Merge Again
+cmps_counties_merged_2024 <- cmps_counties_merged_2024 %>%
+  mutate(opc = NULL, socialcap = NULL, sk2014 = NULL, civic_organizations_county = NULL, race_per_white_nonhispanic = NULL, per_poverty = NULL, college_educ = NULL) %>%  # Remove old civic org columns to avoid duplicates
+  left_join(civicorgdata, by = "FIPS")
+
+
+#Checking my work again
+#Check Your Work One Last Time
+sum(is.na(cmps_counties_merged_2024$FIPS))
+
+  
+unmatched_cases_thirdpass <- cmps_counties_merged_2024 %>%
+  filter(is.na(FIPS)) %>%
+  dplyr::select(state_name, county_name, s21, s22, vac) %>%
+  arrange(state_name)
+
+#It's still all Williamsburg City cases so I'm going to do the same loop but this time do it to the vac term instead of the county name
+cmps_counties_merged_2024 <- cmps_counties_merged_2024 %>%
+  mutate(
+    FIPS = case_when(
+      state_name == "VIRGINIA" & vac == 135 ~ "51830",
+      TRUE ~ FIPS
+    ),
+    
+  county_name = case_when(
+      s21 == 47 & vac == 135 ~ "WILLIAMSBURG CITY",
+      TRUE ~ county_name
+    )
+  )
+
+cmps_counties_merged_2024 <- cmps_counties_merged_2024 %>%
+  mutate(opc = NULL, socialcap = NULL, sk2014 = NULL, civic_organizations_county = NULL, race_per_white_nonhispanic = NULL, per_poverty = NULL, college_educ = NULL) %>%  # Remove old civic org columns to avoid duplicates
+  left_join(civicorgdata, by = "FIPS")
+
+unmatched_cases_finalpass <- cmps_counties_merged_2024 %>%
+  filter(is.na(FIPS)) %>%
+  dplyr::select(state_name, county_name, s21) %>%
+  arrange(state_name)
+
+print("Counties that didn't match to FIPS:")
+print(unmatched_cases_finalpass)
+#Perfect - everything is merged
+```
+
+```{r Step 11: Write Final CSV for 2024, include=TRUE}
+write.csv(cmps_counties_merged_2024, here("cmps_merged_civicorgdata_2024.csv"), row.names = FALSE)
 ```
