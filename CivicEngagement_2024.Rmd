@@ -1,0 +1,604 @@
+---
+title: "CivicEngagement_2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(janitor)
+library(here)
+library(haven)
+library(modelsummary)
+library(ggeffects)
+library(MASS)
+library(margins)
+library(scales)
+library(nnet)
+library(broom)
+library(tigris)
+```
+
+```{r Step 0: data ingestion, include=TRUE}
+cmps_merged <- read_csv(here("cmps_merged_civicorgdata_2024.csv"))
+```
+
+```{r Step 1: Initial Model on Trump Vote Share, include=TRUE}
+# Create binary Trump vote variable
+cmps_merged <- cmps_merged %>%
+  mutate(trump_vote = ifelse(q17 == 1, 1, 0))
+
+# Run logistic regression
+model1 <- glm(trump_vote ~ opc, 
+              data = cmps_merged, 
+              family = binomial)
+
+# View results
+summary(model1)
+
+# Get tidy output
+tidy(model1, exponentiate = TRUE, conf.int = TRUE)
+
+# Check model fit
+glance(model1)
+
+#Create Control Variables
+# Create other factor variables
+cmps_merged$gender_factor <- factor(cmps_merged$s14, 
+                                   levels = 1:3,
+                                   labels = c("Man", "Woman", "Non-binary"))
+
+cmps_merged$income_factor <- factor(cmps_merged$hhinc, 
+                                   levels = 1:5,
+                                   labels = c("Less than $39k", "$40k-$59k", 
+                                             "$60k-$99k", "$100k+", "Don't know"))
+
+cmps_merged$education_factor <- factor(cmps_merged$s17, 
+                                      levels = 1:7,
+                                      labels = c("Grades 1-8", "Some high school", 
+                                                "High school graduate or GED", "Some college",
+                                                "Associates, 2-year degree", "Bachelors, 4-year degree",
+                                                "Post-graduate degree"))
+
+cmps_merged$age_factor <- factor(cmps_merged$agecat, 
+                                levels = 1:5,
+                                labels = c("16-17 yrs", "18-29 yrs", "30-44 yrs", 
+                                          "45-64 yrs", "65+ yrs"))
+
+cmps_merged$region_factor <- factor(cmps_merged$region, 
+                                   levels = 1:4,
+                                   labels = c("Midwest", "Northeast", "South", "West"))
+
+cmps_merged$urban_factor <- factor(cmps_merged$s24, 
+                                  levels = 1:5,
+                                  labels = c("Large urban area", "Large suburb near large city",
+                                            "Small suburb near small town or city", 
+                                            "Small town or small city", "Rural area"))
+
+# Run logistic regression with controls
+model2_controlled <- glm(trump_vote ~ opc + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor, 
+                        data = cmps_merged, 
+                        family = binomial)
+
+# View results
+summary(model2_controlled)
+
+# Get tidy output with odds ratios
+tidy(model2_controlled, exponentiate = TRUE, conf.int = TRUE)
+
+# Compare models
+library(broom)
+
+# Model comparison
+model_comparison <- bind_rows(
+  tidy(model1, conf.int = TRUE) %>% mutate(model = "Naive"),
+  tidy(model2_controlled, conf.int = TRUE) %>% mutate(model = "Controlled")
+) %>%
+  filter(term == "opc") %>%
+  select(model, estimate, std.error, p.value, conf.low, conf.high)
+
+print(model_comparison)
+
+# Check model fit comparison
+glance(model1) %>% mutate(model = "Naive") %>%
+  bind_rows(glance(model2_controlled) %>% mutate(model = "Controlled")) %>%
+  select(model, AIC, BIC, logLik, deviance, nobs) 
+
+#Full Model - Black Respondents
+cmps_merged_black <- cmps_merged %>%
+  filter(s3r3 == 1)
+full_model_black <- glm(trump_vote ~ opc + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor, 
+                        data = cmps_merged_black, 
+                        family = binomial)
+
+summary(full_model_black)
+
+
+cmps_merged_white <- cmps_merged %>%
+  filter(s3r1 == 1)
+full_model_white <- glm(trump_vote ~ opc + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor, 
+                        data = cmps_merged_white, 
+                        family = binomial)
+summary(full_model_white)
+
+cmps_merged_latino <- cmps_merged %>%
+  filter(s3r2 == 1)
+full_model_latino <- glm(trump_vote ~ opc + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor, 
+                        data = cmps_merged_latino, 
+                        family = binomial)
+summary(full_model_latino)
+
+cmps_merged_asian <- cmps_merged %>%
+  filter(s3r4 == 1)
+full_model_asian <- glm(trump_vote ~ opc + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor, 
+                        data = cmps_merged_asian, 
+                        family = binomial)
+summary(full_model_asian)
+
+
+#The civic engagement effect strengthened with controls (-0.200 → -0.238), indicating this isn't just demographic composition driving the relationship. Areas with more civic opportunities have genuinely lower Trump support, independent of their demographic makeup. 
+
+#Key Finding: Civic Engagement Effect Disappears for Black Voters opc coefficient: -0.120 (p = 0.254, NOT significant) Compare to overall sample: -0.238 (p < 0.001)
+#Interpretation: Civic engagement opportunities do not predict Trump voting among Black respondents
+#Why This Makes Theoretical Sense: Black voters have consistently low Trump support (~5-10%) regardless of context. The "floor effect" means there's little room for civic engagement to further reduce already minimal Trump support.
+
+#Key Finding: No Civic Engagement Effect for White Voters Either opc coefficient: -0.073 (p = 0.605, NOT significant) Compare to overall: -0.238 (p < 0.001), Compare to Black sample: -0.120 (p = 0.254) If civic engagement doesn't predict Trump support among Black OR White voters individually, but does predict it in the overall sample, the effect must be: Driven by other racial groups (Latino, Asian, etc.), or A compositional effect - areas with more civic engagement have different racial compositions
+
+#Key Finding for Latino Voters: Positive (but Non-Significant) Civic Engagement Effect opc coefficient: +0.081 (p = 0.460, NOT significant) Direction is OPPOSITE to overall sample (-0.238) Higher civic engagement → slightly higher Trump support (though not significant)
+
+#Asian Voters Show the Strongest Civic Engagement Effect opc coefficient: -0.508*** (p < 0.001)
+#Twice as strong as the overall sample (-0.238***), Odds Ratio: exp(-0.508) = 0.601
+#Interpretation: Each unit increase in civic opportunities reduces Trump voting odds by 39.9% among Asian voters
+
+
+#Final Civic Engagement Pattern Across Groups:
+##Asian voters: -0.508*** (VERY strong negative)
+##Overall sample: -0.238*** (strong negative)
+##Black voters: -0.120 (weak negative, n.s.)
+##White voters: -0.073 (weak negative, n.s.)
+##Latino voters: +0.081 (weak positive, n.s.)
+
+#Key Insight: Asian Voters Drive the Overall Effect: The strong overall civic engagement effect is primarily driven by Asian American voters, who are highly responsive to civic context in their voting behavior.
+#Asian-Specific Patterns:
+##Age: Strongest age effects across all groups
+  #30-44 yrs: 88% higher Trump odds
+  #45-64 yrs: 62% higher Trump odds
+  #65+ yrs: 58% higher Trump odds
+  #(Older Asian voters more Trump-supportive)
+
+##Education: Flat pattern - no education effects (unlike other groups)
+
+##Regional: West shows 32% lower Trump odds vs. Midwest
+##Theoretical Implications:Asian voters may be most responsive to civic/social context. Civic engagement creates social networks that discourage Trump support among Asian Americans, which could reflect assimilation/integration processes where civic participation reinforces democratic norms
+
+```
+
+```{r Step 2: Regression Model Based on Partisan Strength, include=TRUE}
+# Naive model: OPC predicting party ID (1=Strong Dem, 7=Strong Rep)
+model_pid_naive <- lm(pid7 ~ opc, data = cmps_merged)
+summary(model_pid_naive)
+
+# Controlled model
+model_pid_controlled <- lm(pid7 ~ opc + gender_factor + income_factor + 
+                          education_factor + age_factor + region_factor + urban_factor, 
+                          data = cmps_merged)
+summary(model_pid_controlled)
+
+
+# Create partisanship strength variable (distance from independent)
+cmps_merged$pid_strength <- abs(cmps_merged$pid7 - 4)
+# This creates: 0=Independent, 1=Weak partisan, 2=Moderate partisan, 3=Strong partisan
+
+# Naive model: OPC predicting partisanship strength
+model_strength_naive <- lm(pid_strength ~ opc, data = cmps_merged)
+summary(model_strength_naive)
+
+# Controlled model  
+model_strength_controlled <- lm(pid_strength ~ opc + gender_factor + income_factor + 
+                               education_factor + age_factor + region_factor + urban_factor, 
+                               data = cmps_merged)
+summary(model_strength_controlled)
+
+# Compare all models
+library(broom)
+bind_rows(
+  tidy(model_pid_naive) %>% filter(term == "opc") %>% mutate(model = "PID Direction - Naive"),
+  tidy(model_pid_controlled) %>% filter(term == "opc") %>% mutate(model = "PID Direction - Controlled"),
+  tidy(model_strength_naive) %>% filter(term == "opc") %>% mutate(model = "PID Strength - Naive"), 
+  tidy(model_strength_controlled) %>% filter(term == "opc") %>% mutate(model = "PID Strength - Controlled")
+) %>%
+  dplyr::select(model, estimate, std.error, p.value)
+
+#Full Model Results: Each unit increase in civic opportunities moves people 0.17 points toward Democratic identification on the 1-7 scale. However, in terms of partisan strength, while it initially seemed like there was a relationship between civic engagement and partisan strength, it goes away once the controls are placed in the model, suggesting that the "strengthening partisanship" effect was actually due to demographic composition, not civic engagement itself. Civic engagement has one robust effect on partisanship: it pushes people toward Democratic identification, but it doesn't make people more partisan per se.
+
+
+```
+
+```{r Step 2 (Part 2): Subgroup Analysis for Partisan ID and Strength, include=TRUE}
+#Do this broken down by race 
+#Black Subsample
+# Naive model: OPC predicting party ID (1=Strong Dem, 7=Strong Rep)
+model_pid_naive_black <- lm(pid7 ~ opc, data = cmps_merged_black)
+summary(model_pid_naive_black)
+
+# Controlled model
+model_pid_controlled_black <- lm(pid7 ~ opc + gender_factor + income_factor + 
+                          education_factor + age_factor + region_factor + urban_factor, 
+                          data = cmps_merged_black)
+summary(model_pid_controlled_black)
+
+
+# Create partisanship strength variable (distance from independent)
+cmps_merged_black$pid_strength <- abs(cmps_merged_black$pid7 - 4)
+
+# Naive model: OPC predicting partisanship strength
+model_strength_naive_black <- lm(pid_strength ~ opc, data = cmps_merged_black)
+summary(model_strength_naive_black)
+
+# Controlled model  
+model_strength_controlled_black <- lm(pid_strength ~ opc + gender_factor + income_factor + 
+                               education_factor + age_factor + region_factor + urban_factor, 
+                               data = cmps_merged_black)
+summary(model_strength_controlled_black)
+
+# Compare all models
+library(broom)
+bind_rows(
+  tidy(model_pid_naive_black) %>% filter(term == "opc") %>% mutate(model = "PID Direction - Naive (Black Subsample)"),
+  tidy(model_pid_controlled_black) %>% filter(term == "opc") %>% mutate(model = "PID Direction - Controlled (Black Subsample)"),
+  tidy(model_strength_naive_black) %>% filter(term == "opc") %>% mutate(model = "PID Strength - Naive (Black Subsample)"), 
+  tidy(model_strength_controlled_black) %>% filter(term == "opc") %>% mutate(model = "PID Strength - Controlled (Black Subsample)")
+) %>%
+  dplyr::select(model, estimate, std.error, p.value)
+
+
+#White Subsample
+# Naive model: OPC predicting party ID (1=Strong Dem, 7=Strong Rep)
+model_pid_naive_white <- lm(pid7 ~ opc, data = cmps_merged_white)
+summary(model_pid_naive_white)
+
+# Controlled model
+model_pid_controlled_white <- lm(pid7 ~ opc + gender_factor + income_factor + 
+                          education_factor + age_factor + region_factor + urban_factor, 
+                          data = cmps_merged_white)
+summary(model_pid_controlled_white)
+
+
+# Create partisanship strength variable (distance from independent)
+cmps_merged_white$pid_strength <- abs(cmps_merged_white$pid7 - 4)
+
+# Naive model: OPC predicting partisanship strength
+model_strength_naive_white <- lm(pid_strength ~ opc, data = cmps_merged_white)
+summary(model_strength_naive_white)
+
+# Controlled model  
+model_strength_controlled_white <- lm(pid_strength ~ opc + gender_factor + income_factor + 
+                               education_factor + age_factor + region_factor + urban_factor, 
+                               data = cmps_merged_white)
+summary(model_strength_controlled_white)
+
+# Compare all models
+library(broom)
+bind_rows(
+  tidy(model_pid_naive_white) %>% filter(term == "opc") %>% mutate(model = "PID Direction - Naive (white Subsample)"),
+  tidy(model_pid_controlled_white) %>% filter(term == "opc") %>% mutate(model = "PID Direction - Controlled (white Subsample)"),
+  tidy(model_strength_naive_white) %>% filter(term == "opc") %>% mutate(model = "PID Strength - Naive (white Subsample)"), 
+  tidy(model_strength_controlled_white) %>% filter(term == "opc") %>% mutate(model = "PID Strength - Controlled (white Subsample)")
+) %>%
+  dplyr::select(model, estimate, std.error, p.value)
+
+
+#Latino Subsample
+# Naive model: OPC predicting party ID (1=Strong Dem, 7=Strong Rep)
+model_pid_naive_latino <- lm(pid7 ~ opc, data = cmps_merged_latino)
+summary(model_pid_naive_latino)
+
+# Controlled model
+model_pid_controlled_latino <- lm(pid7 ~ opc + gender_factor + income_factor + 
+                          education_factor + age_factor + region_factor + urban_factor, 
+                          data = cmps_merged_latino)
+summary(model_pid_controlled_latino)
+
+
+# Create partisanship strength variable (distance from independent)
+cmps_merged_latino$pid_strength <- abs(cmps_merged_latino$pid7 - 4)
+
+# Naive model: OPC predicting partisanship strength
+model_strength_naive_latino <- lm(pid_strength ~ opc, data = cmps_merged_latino)
+summary(model_strength_naive_latino)
+
+# Controlled model  
+model_strength_controlled_latino <- lm(pid_strength ~ opc + gender_factor + income_factor + 
+                               education_factor + age_factor + region_factor + urban_factor, 
+                               data = cmps_merged_latino)
+summary(model_strength_controlled_latino)
+
+# Compare all models
+library(broom)
+bind_rows(
+  tidy(model_pid_naive_latino) %>% filter(term == "opc") %>% mutate(model = "PID Direction - Naive (latino Subsample)"),
+  tidy(model_pid_controlled_latino) %>% filter(term == "opc") %>% mutate(model = "PID Direction - Controlled (latino Subsample)"),
+  tidy(model_strength_naive_latino) %>% filter(term == "opc") %>% mutate(model = "PID Strength - Naive (latino Subsample)"), 
+  tidy(model_strength_controlled_latino) %>% filter(term == "opc") %>% mutate(model = "PID Strength - Controlled (latino Subsample)")
+) %>%
+  dplyr::select(model, estimate, std.error, p.value)
+
+
+#Asian Subsample
+# Naive model: OPC predicting party ID (1=Strong Dem, 7=Strong Rep)
+model_pid_naive_asian <- lm(pid7 ~ opc, data = cmps_merged_asian)
+summary(model_pid_naive_asian)
+
+# Controlled model
+model_pid_controlled_asian <- lm(pid7 ~ opc + gender_factor + income_factor + 
+                          education_factor + age_factor + region_factor + urban_factor, 
+                          data = cmps_merged_asian)
+summary(model_pid_controlled_asian)
+
+
+# Create partisanship strength variable (distance from independent)
+cmps_merged_asian$pid_strength <- abs(cmps_merged_asian$pid7 - 4)
+
+# Naive model: OPC predicting partisanship strength
+model_strength_naive_asian <- lm(pid_strength ~ opc, data = cmps_merged_asian)
+summary(model_strength_naive_asian)
+
+# Controlled model  
+model_strength_controlled_asian <- lm(pid_strength ~ opc + gender_factor + income_factor + 
+                               education_factor + age_factor + region_factor + urban_factor, 
+                               data = cmps_merged_asian)
+summary(model_strength_controlled_asian)
+
+# Compare all models
+library(broom)
+bind_rows(
+  tidy(model_pid_naive_asian) %>% filter(term == "opc") %>% mutate(model = "PID Direction - Naive (asian Subsample)"),
+  tidy(model_pid_controlled_asian) %>% filter(term == "opc") %>% mutate(model = "PID Direction - Controlled (asian Subsample)"),
+  tidy(model_strength_naive_asian) %>% filter(term == "opc") %>% mutate(model = "PID Strength - Naive (asian Subsample)"), 
+  tidy(model_strength_controlled_asian) %>% filter(term == "opc") %>% mutate(model = "PID Strength - Controlled (asian Subsample)")
+) %>%
+  dplyr::select(model, estimate, std.error, p.value)
+
+#Black Subsample Results: No Civic Engagement Effects on Partisanship (Civic engagement doesn't push Black voters toward either party or strengthen partisanship)
+#White Subsample Results: No directional partisan effects (unlike overall sample's Democratic lean), Temporary strengthening effect that disappears with controls, Suggests White voters in high civic engagement areas are initially more polarized, but this is due to demographic composition (education, income, urban/rural) rather than civic engagement itself
+#Latino Subsample Results: For Latino voters, civic engagement creates political moderation: No partisan direction (neither more Dem nor Rep), Weaker partisan attachments (more independent/moderate), Suggests civic engagement among Latinos promotes cross-cutting social ties that reduce partisan intensity
+#Asian Subsample Results: Asian American voters drive BOTH the Trump and partisanship effects. Asian voters showed strongest negative civic engagement effect (-0.508***), Asian voters show strongest Democratic shift (-0.478***), Consistent pattern: Civic engagement creates strong Democratic orientation among Asian Americans, Civic engagement works as political socialization for Asian Americans - creating social networks and experiences that build Democratic identification and anti-Trump sentiment. Other groups show much weaker/different responses to civic context.
+
+```
+
+```{r Step 3: Does Civic Engagement Attenuate Racial Resentment's Effects, include=TRUE}
+# Original controlled model (for comparison)
+model2_controlled <- glm(trump_vote ~ opc + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor, 
+                        data = cmps_merged, 
+                        family = binomial)
+
+# New model adding racial resentment
+model3_racial_resentment <- glm(trump_vote ~ opc + q181 + gender_factor + income_factor + 
+                               education_factor + age_factor + region_factor + urban_factor, 
+                               data = cmps_merged, 
+                               family = binomial)
+
+# Compare the OPC coefficients
+library(broom)
+
+coefficient_comparison <- bind_rows(
+  tidy(model2_controlled) %>% filter(term == "opc") %>% mutate(model = "Without Racial Resentment"),
+  tidy(model3_racial_resentment) %>% filter(term == "opc") %>% mutate(model = "With Racial Resentment")
+) %>%
+  dplyr::select(model, estimate, std.error, p.value)
+
+print("=== OPC Coefficient Comparison ===")
+print(coefficient_comparison)
+
+# Show full results of new model
+print("=== Full Model with Racial Resentment ===")
+summary(model3_racial_resentment)
+
+# Calculate mediation effect
+opc_reduction <- coefficient_comparison$estimate[1] - coefficient_comparison$estimate[2]
+percent_mediated <- (opc_reduction / coefficient_comparison$estimate[1]) * 100
+
+cat("\n=== Mediation Analysis ===\n")
+cat("OPC coefficient reduction:", round(opc_reduction, 4), "\n")
+cat("Percent of civic engagement effect mediated by racial resentment:", round(percent_mediated, 1), "%\n")
+
+# Check racial resentment effect
+racial_resentment_coef <- tidy(model3_racial_resentment) %>% filter(term == "q181")
+print("\n=== Racial Resentment Effect ===")
+print(racial_resentment_coef)
+
+```
+
+```{r Step 3 (Part 2): Interaction Model between Racial Resentment, Anti-Immigrant Bias, and Civic Engagement, include=TRUE}
+model_interaction_resentment <- glm(
+  trump_vote ~ opc * q181 + 
+    gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  family = binomial,
+  data = cmps_merged
+)
+
+summary(model_interaction_resentment)
+
+#The interaction between civic engagement and racial resentment is positive and statistically significant (β = 0.115, p < 0.05). Given the coding of the racial resentment variable, this indicates that the effect of racial resentment on Trump voting weakens as civic engagement increases. In other words, racial resentment is a strong predictor of vote choice among less civically engaged individuals, but its influence diminishes among those with higher levels of civic engagement.
+
+model_immigration_interaction <- glm(
+  trump_vote ~ opc * q130 + 
+    gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  family = binomial,
+  data = cmps_merged
+)
+
+summary(model_immigration_interaction)
+
+#While civic engagement significantly moderates the effect of racial resentment on vote choice, no such moderating effect is observed for immigration attitudes. The interaction between civic engagement and immigration attitudes is small and statistically insignificant (β = 0.040, p = 0.39), indicating that the influence of immigration attitudes on Trump voting remains stable across levels of civic engagement.
+```
+
+```{r Step 3 (Part 3): Subgroup Analysis on Attenuating Effect of Civic Engagement, include=TRUE}
+
+#Subgroup Analysis by Race
+controls <- "gender_factor + income_factor + education_factor + 
+             age_factor + region_factor + urban_factor"
+run_models <- function(data) {
+  
+  # Racial resentment model
+  model_rr <- glm(
+    as.formula(paste("trump_vote ~ opc * q181 +", controls)),
+    family = binomial,
+    data = data
+  )
+  
+  # Immigration model
+  model_imm <- glm(
+    as.formula(paste("trump_vote ~ opc * q130 +", controls)),
+    family = binomial,
+    data = data
+  )
+  
+  list(
+    racial_resentment = summary(model_rr),
+    immigration = summary(model_imm)
+  )
+}
+
+results_black  <- run_models(cmps_merged_black)
+results_white  <- run_models(cmps_merged_white)
+results_latino <- run_models(cmps_merged_latino)
+results_asian  <- run_models(cmps_merged_asian)
+
+extract_interaction <- function(model, term_name, group_name, model_name) {
+  tidy(model) %>%
+    filter(term == term_name) %>%
+    dplyr::select(estimate, std.error, p.value) %>%
+    mutate(
+      group = group_name,
+      model = model_name
+    )
+}
+
+# Black
+model_black_rr <- glm(trump_vote ~ opc * q181 + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor,
+                      family = binomial, data = cmps_merged_black)
+
+model_black_imm <- glm(trump_vote ~ opc * q130 + gender_factor + income_factor + 
+                         education_factor + age_factor + region_factor + urban_factor,
+                       family = binomial, data = cmps_merged_black)
+
+# White
+model_white_rr <- glm(trump_vote ~ opc * q181 + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor,
+                      family = binomial, data = cmps_merged_white)
+
+model_white_imm <- glm(trump_vote ~ opc * q130 + gender_factor + income_factor + 
+                         education_factor + age_factor + region_factor + urban_factor,
+                       family = binomial, data = cmps_merged_white)
+
+# Latino
+model_latino_rr <- glm(trump_vote ~ opc * q181 + gender_factor + income_factor + 
+                         education_factor + age_factor + region_factor + urban_factor,
+                       family = binomial, data = cmps_merged_latino)
+
+model_latino_imm <- glm(trump_vote ~ opc * q130 + gender_factor + income_factor + 
+                          education_factor + age_factor + region_factor + urban_factor,
+                        family = binomial, data = cmps_merged_latino)
+
+# Asian
+model_asian_rr <- glm(trump_vote ~ opc * q181 + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor,
+                      family = binomial, data = cmps_merged_asian)
+
+model_asian_imm <- glm(trump_vote ~ opc * q130 + gender_factor + income_factor + 
+                         education_factor + age_factor + region_factor + urban_factor,
+                       family = binomial, data = cmps_merged_asian)
+
+results_table <- bind_rows(
+  extract_interaction(model_black_rr,  "opc:q181", "Black",  "Racial Resentment"),
+  extract_interaction(model_white_rr,  "opc:q181", "White",  "Racial Resentment"),
+  extract_interaction(model_latino_rr, "opc:q181", "Latino", "Racial Resentment"),
+  extract_interaction(model_asian_rr,  "opc:q181", "Asian",  "Racial Resentment"),
+  
+  extract_interaction(model_black_imm,  "opc:q130", "Black",  "Immigration"),
+  extract_interaction(model_white_imm,  "opc:q130", "White",  "Immigration"),
+  extract_interaction(model_latino_imm, "opc:q130", "Latino", "Immigration"),
+  extract_interaction(model_asian_imm,  "opc:q130", "Asian",  "Immigration")
+)
+
+results_table <- results_table %>%
+  arrange(model, group)
+
+print(results_table)
+#Subgroup analyses by race do not reveal statistically significant interaction effects within any individual group, likely due to reduced sample sizes and statistical power. The absence of significant subgroup effects suggests that the moderating role of civic engagement observed in the full sample is not strongly localized within any particular racial group.
+```
+
+```{r Step 3 (Part 4): Triple Interaction Model, include=TRUE}
+cmps_merged$race_factor <- cmps_merged$race_factor <- factor(cmps_merged$qraceid, 
+                                   levels = 1:6,
+                                   labels = c("White", "Latino", "Black", "AAPI", "NativeAM", "MENA"))
+
+cmps_merged$race_factor <- relevel(cmps_merged$race_factor, ref = "White")
+
+sum(is.na(cmps_merged$s4))
+sum(is.na(cmps_merged$qraceid))
+
+sum(complete.cases(cmps_merged[, c(
+  "trump_vote", "opc", "q130", "race_factor",
+  "gender_factor", "income_factor", "education_factor",
+  "age_factor", "region_factor", "urban_factor"
+)]))
+
+model_rr_triple <- glm(
+  trump_vote ~ opc * q181 * race_factor + 
+    gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  family = binomial,
+  data = cmps_merged
+)
+
+summary(model_rr_triple)
+
+model_imm_triple <- glm(
+  trump_vote ~ opc * q130 * race_factor + 
+    gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  family = binomial,
+  data = cmps_merged
+)
+
+summary(model_imm_triple)
+#The results provide no evidence that civic engagement moderates the effect of racial resentment on vote choice, either overall or across racial groups. While racial resentment remains a strong and significant predictor of Trump voting, its effect does not vary systematically with levels of civic engagement. However, the relationship between racial resentment and vote choice does differ across racial groups, with a significantly weaker effect observed among Black respondents compared to White respondents. The results don't show that civic engagement moderates the influence of either racial resentment or immigration attitudes on vote choice. Interaction terms between civic engagement and these attitudinal measures are small and statistically insignificant across all racial groups. However, the effects of both racial resentment and immigration attitudes vary across racial groups, with weaker associations observed among Black and Asian respondents compared to White respondents.
+
+```
+
+```{r Step 4: Does Civic Engagement Increase Perceptions of Linked Fate, include=TRUE}
+cmps_merged$linked_fate <- 5 - cmps_merged$q207
+
+model_lf_main <- lm(
+  linked_fate ~ opc + 
+    gender_factor + income_factor + education_factor + race_factor +
+    age_factor + region_factor + urban_factor,
+  data = cmps_merged
+)
+
+summary(model_lf_main)
+#The results provide no evidence that civic engagement increases individuals’ sense of linked fate. Across a range of demographic controls, civic engagement is not significantly associated with a greater willingness to make sacrifices for members of one’s racial group. In contrast, linked fate varies strongly across racial groups, with Black, Latino, and Asian respondents expressing significantly higher levels of group consciousness than White respondents.
+
+model_lf_interaction <- lm(
+  linked_fate ~ opc * race_factor + 
+    gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  data = cmps_merged
+)
+
+summary(model_lf_interaction)
+#Civic engagement does not increase linked fate for any group, and for Black and AAPI respondents, it is actually significantly less positively associated (relative to Whites). The results provide no evidence that civic engagement increases individuals’ sense of linked fate. Moreover, the relationship between civic engagement and linked fate varies across racial groups. While the association is weak and statistically insignificant among White respondents, it is significantly less positive among Black and Asian respondents. These findings suggest that civic engagement does not foster stronger group-based identity and may, if anything, be less associated with linked fate among minority groups.
+```

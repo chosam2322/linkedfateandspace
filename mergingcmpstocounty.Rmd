@@ -149,8 +149,6 @@ get_county_code <- function(data) {
 cmps2024 <- get_county_code(cmps2024)
 ```
 
-
-
 ```{r Step 5: Create lookup tables for county names, include=TRUE}
 # Create lookup tables for each state
 county_mapping <- list(
@@ -1206,14 +1204,14 @@ cmps2024 <- cmps2024 %>%
 ```
 
 
-```{r Step 9: Merge with Civic Organization Data, include=TRUE}
+```{r Step 8: Merge with Civic Organization Data, include=TRUE}
 # Merge the survey data with civic organization data
 cmps_counties_merged_2024 <- cmps2024 %>%
   left_join(civicorgdata, by = "FIPS")
 
 ```
 
-```{r Step 10: Check Data for Missingness Issues, include=TRUE}
+```{r Step 9: Check Data for Missingness Issues, include=TRUE}
 sum(is.na(cmps_counties_merged_2024$FIPS))
 #236 entries missing a FIPS code - which is a good, small number 
   
@@ -1380,6 +1378,6 @@ print(unmatched_cases_finalpass)
 #Perfect - everything is merged
 ```
 
-```{r Step 11: Write Final CSV for 2024, include=TRUE}
+```{r Step 10: Write Final CSV for 2024, include=TRUE}
 write.csv(cmps_counties_merged_2024, here("cmps_merged_civicorgdata_2024.csv"), row.names = FALSE)
 ```
