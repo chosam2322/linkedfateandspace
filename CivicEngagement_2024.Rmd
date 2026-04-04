@@ -98,7 +98,7 @@ model_comparison <- bind_rows(
   tidy(model2_controlled, conf.int = TRUE) %>% mutate(model = "Controlled")
 ) %>%
   filter(term == "opc") %>%
-  select(model, estimate, std.error, p.value, conf.low, conf.high)
+  dplyr::select(model, estimate, std.error, p.value, conf.low, conf.high)
 
 print(model_comparison)
 
@@ -580,7 +580,7 @@ summary(model_imm_triple)
 ```
 
 ```{r Step 4: Does Civic Engagement Increase Perceptions of Linked Fate, include=TRUE}
-cmps_merged$linked_fate <- 5 - cmps_merged$q207
+cmps_merged$linked_fate <- 5 - cmps_merged$q376
 
 model_lf_main <- lm(
   linked_fate ~ opc + 
