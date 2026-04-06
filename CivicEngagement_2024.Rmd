@@ -19,6 +19,7 @@ library(scales)
 library(nnet)
 library(broom)
 library(tigris)
+library(marginaleffects)
 ```
 
 ```{r Step 0: data ingestion, include=TRUE}
@@ -105,43 +106,83 @@ print(model_comparison)
 # Check model fit comparison
 glance(model1) %>% mutate(model = "Naive") %>%
   bind_rows(glance(model2_controlled) %>% mutate(model = "Controlled")) %>%
-  select(model, AIC, BIC, logLik, deviance, nobs) 
+  dplyr::select(model, AIC, BIC, logLik, deviance, nobs)
 
 #Full Model - Black Respondents
 cmps_merged_black <- cmps_merged %>%
   filter(s3r3 == 1)
+naive_model_black <- glm(trump_vote ~ opc, data = cmps_merged_black, family = binomial)
 full_model_black <- glm(trump_vote ~ opc + gender_factor + income_factor + 
                         education_factor + age_factor + region_factor + urban_factor, 
                         data = cmps_merged_black, 
                         family = binomial)
 
 summary(full_model_black)
-
+summary(naive_model_black)
 
 cmps_merged_white <- cmps_merged %>%
   filter(s3r1 == 1)
+naive_model_white <- glm(trump_vote ~ opc, data = cmps_merged_white, family = binomial)
 full_model_white <- glm(trump_vote ~ opc + gender_factor + income_factor + 
                         education_factor + age_factor + region_factor + urban_factor, 
                         data = cmps_merged_white, 
                         family = binomial)
+summary(naive_model_white)
 summary(full_model_white)
+
 
 cmps_merged_latino <- cmps_merged %>%
   filter(s3r2 == 1)
+naive_model_latino <- glm(trump_vote ~ opc, data = cmps_merged_latino, family = binomial)
 full_model_latino <- glm(trump_vote ~ opc + gender_factor + income_factor + 
                         education_factor + age_factor + region_factor + urban_factor, 
                         data = cmps_merged_latino, 
                         family = binomial)
+summary(naive_model_latino)
 summary(full_model_latino)
 
 cmps_merged_asian <- cmps_merged %>%
   filter(s3r4 == 1)
+naive_model_asian <- glm(trump_vote ~ opc, data = cmps_merged_asian, family = binomial)
 full_model_asian <- glm(trump_vote ~ opc + gender_factor + income_factor + 
                         education_factor + age_factor + region_factor + urban_factor, 
                         data = cmps_merged_asian, 
                         family = binomial)
+summary(naive_model_asian)
 summary(full_model_asian)
 
+table_comparison_initial <- modelsummary(list(
+  "Overall" = model1,
+  "Black" = naive_model_black,
+  "White" = naive_model_white,
+  "Latino" = naive_model_latino,
+  "Asian" = naive_model_asian
+), output = "table_comparison_initial.png", stars = TRUE, coef_map = c("opc" = "Civil Society Density"), coef_omit = "Intercept")
+
+print(table_comparison_initial)
+
+model_comparison_race <- modelplot(
+  list(
+    "Overall" = model1,
+    "Black" = naive_model_black,
+    "White" = naive_model_white,
+    "Latino" = naive_model_latino,
+    "Asian" = naive_model_asian
+  ),
+  coef_map = c("opc" = "Civil Society Density"),
+  coef_omit = "Intercept",
+) +
+  theme_minimal() +
+  labs(title = "Civic Engagement Effect on Trump Vote by Subgroup")
+
+print(model_comparison_race)
+ggsave(
+  filename = "model_comparison_initial.png",
+  plot = model_comparison_race,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
 
 #The civic engagement effect strengthened with controls (-0.200 → -0.238), indicating this isn't just demographic composition driving the relationship. Areas with more civic opportunities have genuinely lower Trump support, independent of their demographic makeup. 
 
@@ -185,6 +226,23 @@ summary(full_model_asian)
 model_pid_naive <- lm(pid7 ~ opc, data = cmps_merged)
 summary(model_pid_naive)
 
+plot_naive <- ggplot(cmps_merged, aes(x = opc, y = pid7)) +
+  geom_smooth(method = "lm", se = TRUE) +
+  theme_minimal() +
+  labs(
+    title = "Naive Relationship: Civil Society Density and Democratic Party ID",
+    x = "Civil Society Density",
+    y = "Democratic Party Identification (PID7)"
+  )
+plot_naive
+ggsave(
+  filename = "model_initial_scatter.png",
+  plot = plot_naive,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
 # Controlled model
 model_pid_controlled <- lm(pid7 ~ opc + gender_factor + income_factor + 
                           education_factor + age_factor + region_factor + urban_factor, 
@@ -205,6 +263,51 @@ model_strength_controlled <- lm(pid_strength ~ opc + gender_factor + income_fact
                                education_factor + age_factor + region_factor + urban_factor, 
                                data = cmps_merged)
 summary(model_strength_controlled)
+
+# Residualize PID on controls
+vars_needed <- c("pid7", "opc", "gender_factor", "income_factor",
+                 "education_factor", "age_factor", "region_factor", "urban_factor")
+
+cmps_complete <- na.omit(cmps_merged[, vars_needed])
+# Residualize PID
+pid_resid <- resid(lm(pid7 ~ gender_factor + income_factor + 
+                      education_factor + age_factor + 
+                      region_factor + urban_factor, 
+                      data = cmps_complete))
+
+# Residualize OPC
+opc_resid <- resid(lm(opc ~ gender_factor + income_factor + 
+                      education_factor + age_factor + 
+                      region_factor + urban_factor, 
+                      data = cmps_complete))
+
+residual_df <- data.frame(opc_resid, pid_resid)
+
+plot_controlled <- ggplot(residual_df, aes(x = opc_resid, y = pid_resid)) +
+  geom_jitter(width = 0.1, height = 0.1, alpha = 0.3) +
+  geom_smooth(method = "lm", se = TRUE) +
+  theme_minimal() +
+  labs(
+    title = "Controlled Relationship: Civil Society Density and Democratic Party ID",
+    x = "Civil Society Density (Residualized)",
+    y = "Democratic Party ID (Residualized)"
+  )
+
+plot_controlled
+
+pred <- ggpredict(model_pid_controlled, terms = "opc")
+
+plot_controlled_2 <- ggplot(pred, aes(x = x, y = predicted)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  theme_minimal() +
+  labs(
+    title = "Predicted Democratic Party ID by Civil Society Density",
+    x = "Civil Society Density",
+    y = "Predicted PID"
+  )
+
+plot_controlled_2
 
 # Compare all models
 library(broom)
@@ -366,6 +469,38 @@ bind_rows(
 ) %>%
   dplyr::select(model, estimate, std.error, p.value)
 
+
+table_comparison_partisanship_race <- modelsummary(list(
+  "Overall" = model_pid_naive,
+  "Black" = model_pid_naive_black,
+  "White" = model_pid_naive_white,
+  "Latino" = model_pid_naive_latino,
+  "Asian" = model_pid_naive_asian
+), output = "table_comparison_partisan.png", stars = TRUE, coef_map = c("opc" = "Civil Society Density"), coef_omit = "Intercept")
+
+model_comparison_partisanship_race <- modelplot(
+  list(
+    "Overall" = model_pid_naive,
+    "Black" = model_pid_naive_black,
+    "White" = model_pid_naive_white,
+    "Latino" = model_pid_naive_latino,
+    "Asian" = model_pid_naive_asian
+  ),
+  coef_map = c("opc" = "Civil Society Density"),
+  coef_omit = "Intercept"
+) +
+  theme_minimal() +
+  labs(title = "Civic Engagement Effect on Partisan Identification by Subgroup")
+
+print(model_comparison_partisanship_race)
+ggsave(
+  filename = "model_comparison_partisanship_race.png",
+  plot = model_comparison_partisanship_race,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
 #Black Subsample Results: No Civic Engagement Effects on Partisanship (Civic engagement doesn't push Black voters toward either party or strengthen partisanship)
 #White Subsample Results: No directional partisan effects (unlike overall sample's Democratic lean), Temporary strengthening effect that disappears with controls, Suggests White voters in high civic engagement areas are initially more polarized, but this is due to demographic composition (education, income, urban/rural) rather than civic engagement itself
 #Latino Subsample Results: For Latino voters, civic engagement creates political moderation: No partisan direction (neither more Dem nor Rep), Weaker partisan attachments (more independent/moderate), Suggests civic engagement among Latinos promotes cross-cutting social ties that reduce partisan intensity
@@ -418,6 +553,13 @@ print(racial_resentment_coef)
 ```
 
 ```{r Step 3 (Part 2): Interaction Model between Racial Resentment, Anti-Immigrant Bias, and Civic Engagement, include=TRUE}
+model_interaction_resentment_naive <- glm(
+  trump_vote ~ opc * q181, 
+  family = binomial, 
+  data = cmps_merged
+)
+summary(model_interaction_resentment_naive)
+
 model_interaction_resentment <- glm(
   trump_vote ~ opc * q181 + 
     gender_factor + income_factor + education_factor + 
@@ -428,7 +570,78 @@ model_interaction_resentment <- glm(
 
 summary(model_interaction_resentment)
 
+table_rr_comparison <- modelsummary(
+  list(
+    "Naive" = model_interaction_resentment_naive,
+    "Controlled" = model_interaction_resentment
+  ),
+  output = "table_rr_comparison.png",
+  stars = TRUE,
+  coef_map = c(
+    "opc" = "Civil Society Density",
+    "q181" = "Racial Resentment",
+    "opc:q181" = "Civil Society Density × Racial Resentment"
+  ),
+  coef_omit = "Intercept"
+)
+
+print(table_rr_comparison)
+
+
+library(modelsummary)
+library(dplyr)
+library(ggplot2)
+
+# Extract tidy model results
+df <- modelplot(
+  list(
+    "Naive" = model_interaction_resentment_naive,
+    "Controlled" = model_interaction_resentment
+  ),
+  coef_rename = c(
+    "opc" = "Civil Society Density",
+    "q181" = "Racial Resentment",
+    "opc:q181" = "Civil Society Density × Racial Resentment"
+  ),
+  coef_omit = "Intercept",
+  draw = FALSE   # <- IMPORTANT: returns data instead of plot
+)
+
+# Add significance indicator
+df <- df %>%
+  mutate(significant = p.value < 0.05)
+
+# Plot manually with highlighting
+model_rr_comparison <- ggplot(df, aes(x = estimate, y = term, color = significant)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0) +
+  facet_wrap(~model) +
+  scale_color_manual(values = c("TRUE" = "green", "FALSE" = "black")) +
+  theme_minimal() +
+  labs(
+    title = "Interaction Model Comparison: Racial Resentment and Civic Engagement",
+    x = "Coefficient Estimate",
+    y = "",
+    color = "Statistically Significant"
+  )
+
+model_rr_comparison
+
+ggsave(
+  filename = "model_rr_comparison.png",
+  plot = model_rr_comparison,
+  width = 12,
+  height = 8,
+  dpi = 500
+)
 #The interaction between civic engagement and racial resentment is positive and statistically significant (β = 0.115, p < 0.05). Given the coding of the racial resentment variable, this indicates that the effect of racial resentment on Trump voting weakens as civic engagement increases. In other words, racial resentment is a strong predictor of vote choice among less civically engaged individuals, but its influence diminishes among those with higher levels of civic engagement.
+
+model_immigration_naive <- glm(
+  trump_vote ~ opc * q130, 
+  family = binomial, 
+  data = cmps_merged
+)
+summary(model_immigration_naive)
 
 model_immigration_interaction <- glm(
   trump_vote ~ opc * q130 + 
@@ -440,7 +653,24 @@ model_immigration_interaction <- glm(
 
 summary(model_immigration_interaction)
 
+table_iab_comparison <- modelsummary(
+  list(
+    "Naive" = model_immigration_naive,
+    "Controlled" = model_immigration_interaction
+  ),
+  output = "table_iab_comparison.png",
+  stars = TRUE,
+  coef_map = c(
+    "opc" = "Civil Society Density",
+    "q130" = "Anti-Immigrant Bias",
+    "opc:q130" = "Civil Society Density × Anti-Immigrant Bias"
+  ),
+  coef_omit = "Intercept"
+)
+print(table_iab_comparison)
+
 #While civic engagement significantly moderates the effect of racial resentment on vote choice, no such moderating effect is observed for immigration attitudes. The interaction between civic engagement and immigration attitudes is small and statistically insignificant (β = 0.040, p = 0.39), indicating that the influence of immigration attitudes on Trump voting remains stable across levels of civic engagement.
+
 ```
 
 ```{r Step 3 (Part 3): Subgroup Analysis on Attenuating Effect of Civic Engagement, include=TRUE}
@@ -556,6 +786,13 @@ sum(complete.cases(cmps_merged[, c(
   "age_factor", "region_factor", "urban_factor"
 )]))
 
+
+model_rr_triple_naive <- glm(
+  trump_vote ~ opc * q181,
+  family = binomial, 
+  data = cmps_merged) 
+summary(model_rr_triple_naive)
+
 model_rr_triple <- glm(
   trump_vote ~ opc * q181 * race_factor + 
     gender_factor + income_factor + education_factor + 
@@ -566,6 +803,29 @@ model_rr_triple <- glm(
 
 summary(model_rr_triple)
 
+triple_rr_comparison <- modelsummary(
+  list(
+    "Naive" = model_rr_triple_naive,
+    "Controlled" = model_rr_triple
+  ),
+  output = "table_rr_comparison_triple.png",
+  stars = TRUE,
+  coef_map = c(
+    "opc" = "Civil Society Density",
+    "q181" = "Racial Resentment",
+    "opc:q181" = "Civil Society Density × Racial Resentment"
+  ),
+  coef_omit = "Intercept"
+)
+print(triple_rr_comparison)
+
+
+model_imm_triple_naive <- glm(
+  trump_vote ~ opc * q130,
+  family = binomial, 
+  data = cmps_merged)
+summary(model_imm_triple_naive)
+
 model_imm_triple <- glm(
   trump_vote ~ opc * q130 * race_factor + 
     gender_factor + income_factor + education_factor + 
@@ -575,6 +835,22 @@ model_imm_triple <- glm(
 )
 
 summary(model_imm_triple)
+
+triple_imm_comparison <- modelsummary(
+  list(
+    "Naive" = model_imm_triple_naive,
+    "Controlled" = model_imm_triple
+  ),
+  output = "table_imm_comparison_triple.png",
+  stars = TRUE,
+  coef_map = c(
+    "opc" = "Civil Society Density",
+    "q130" = "Anti-Immigrant Bias",
+    "opc:q130" = "Civil Society Density × Anti-Immigrant Bias"
+  ),
+  coef_omit = "Intercept"
+)
+print(triple_imm_comparison)
 #The results provide no evidence that civic engagement moderates the effect of racial resentment on vote choice, either overall or across racial groups. While racial resentment remains a strong and significant predictor of Trump voting, its effect does not vary systematically with levels of civic engagement. However, the relationship between racial resentment and vote choice does differ across racial groups, with a significantly weaker effect observed among Black respondents compared to White respondents. The results don't show that civic engagement moderates the influence of either racial resentment or immigration attitudes on vote choice. Interaction terms between civic engagement and these attitudinal measures are small and statistically insignificant across all racial groups. However, the effects of both racial resentment and immigration attitudes vary across racial groups, with weaker associations observed among Black and Asian respondents compared to White respondents.
 
 ```
@@ -600,5 +876,183 @@ model_lf_interaction <- lm(
 )
 
 summary(model_lf_interaction)
+
+cmps_merged_black <- cmps_merged %>%
+  filter(s3r3 == 1)
+model_lf_black <- lm(
+  linked_fate ~ opc + gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  data = cmps_merged_black
+)
+
+cmps_merged_white <- cmps_merged %>%
+  filter(s3r1 == 1)
+model_lf_white <- lm(
+  linked_fate ~ opc + gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  data = cmps_merged_white
+)
+
+cmps_merged_latino <- cmps_merged %>%
+  filter(s3r2 == 1)
+model_lf_latino <- lm(
+  linked_fate ~ opc + gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  data = cmps_merged_latino
+)
+
+cmps_merged_asian <- cmps_merged %>%
+  filter(s3r4 == 1)
+model_lf_asian <- lm(
+  linked_fate ~ opc + gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  data = cmps_merged_asian
+)
+
+table_linked_fate_comp <- modelsummary(
+  list(
+    "Overall Model" = model_lf_main,
+    "African American Respondents" = model_lf_black,
+    "White Respondents" = model_lf_white,
+    "Latino Respondents" = model_lf_latino,
+    "Asian Respondents" = model_lf_asian
+  ),
+  output = "table_linked_fate_comparison.png",
+  stars = TRUE,
+  coef_map = c(
+    "opc" = "Civil Society Density"),
+  coef_omit = "Intercept")
+print(table_linked_fate_comp)
+
+
 #Civic engagement does not increase linked fate for any group, and for Black and AAPI respondents, it is actually significantly less positively associated (relative to Whites). The results provide no evidence that civic engagement increases individuals’ sense of linked fate. Moreover, the relationship between civic engagement and linked fate varies across racial groups. While the association is weak and statistically insignificant among White respondents, it is significantly less positive among Black and Asian respondents. These findings suggest that civic engagement does not foster stronger group-based identity and may, if anything, be less associated with linked fate among minority groups.
+```
+
+```{r Step 5: Looking at Black Respondents Neighborhood Context, include=TRUE}
+
+model_q390 <- lm(
+  q390r1 ~ opc,
+  data = cmps_merged_black
+)
+
+summary(model_q390)
+
+model_q390_controlled <- lm(
+  q390r1 ~ opc + gender_factor + income_factor + education_factor + age_factor + region_factor + urban_factor,
+  data = cmps_merged_black
+)
+
+summary(model_q390_controlled)
+
+summary(cmps_merged_black$q390r1)
+table(cmps_merged_black$q390r1)
+
+cmps_merged_black$q390r1_clean <- ifelse(
+  cmps_merged_black$q390r1 == 999,
+  NA,
+  cmps_merged_black$q390r1
+)
+
+summary(cmps_merged_black$q390r1_clean)
+
+model_q390_fixed <- lm(
+  q390r1_clean ~ opc + gender_factor + income_factor + 
+    education_factor + age_factor + region_factor + 
+    urban_factor,
+  data = cmps_merged_black
+)
+
+summary(model_q390_fixed)
+
+#Also no effects for African Americans even in terms of higher levels of political comfort when talking to neighbors. This suggests that the civic engagement effect on vote choice among Black respondents is not driven by increased political comfort or socialization within their local communities. Even in areas with more civic opportunities, Black respondents do not report significantly higher levels of political comfort when discussing politics with neighbors, which could help explain why civic engagement does not translate into lower Trump support for this group.
+
+```
+
+```{r Step 6: Replication with Alternative Measures for Civic Engagement, include=TRUE}
+# Run logistic regression with controls with Chetty variable for civic engagement (social capital index)
+model_controlled_chetty <- glm(trump_vote ~ socialcap + gender_factor + income_factor + 
+                        education_factor + age_factor + region_factor + urban_factor, 
+                        data = cmps_merged, 
+                        family = binomial)
+
+# View results
+summary(model_controlled_chetty)
+
+
+# Partisan ID Replication
+
+# Racial Resentment and Anti-Immigrant Replication
+model_interaction_resentment_chetty <- glm(
+  trump_vote ~ socialcap * q181 + 
+    gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  family = binomial,
+  data = cmps_merged
+)
+
+summary(model_interaction_resentment_chetty)
+
+model_immigration_interaction_chetty <- glm(
+  trump_vote ~ socialcap * q130 + 
+    gender_factor + income_factor + education_factor + 
+    age_factor + region_factor + urban_factor,
+  family = binomial,
+  data = cmps_merged
+)
+
+summary(model_immigration_interaction_chetty)
+
+# Linked Fate Replication
+model_lf_main_chetty <- lm(
+  linked_fate ~ socialcap + 
+    gender_factor + income_factor + education_factor + race_factor +
+    age_factor + region_factor + urban_factor,
+  data = cmps_merged
+)
+
+summary(model_lf_main_chetty)
+
+# Neighborhood Context Replication
+model_q390_controlled_chetty <- lm(
+  q390r1_clean ~ socialcap + gender_factor + income_factor + education_factor + age_factor + region_factor + urban_factor,
+  data = cmps_merged_black
+)
+
+summary(model_q390_controlled_chetty)
+
+
+
+
+```
+
+```{r Step 7: Visualizations for Key Findings, include=TRUE}
+modelcomp1 <- modelsummary(list(
+  "Naive Model" = model1,
+  "Controlled Model" = model2_controlled), output = "html", stars = TRUE)
+print(modelcomp1)
+
+modelplot1 <- modelplot(list(
+  "Naive Model" = model1,
+  "Controlled Model" = model2_controlled), 
+  term = "opc", 
+  exponentiate = TRUE, 
+  conf_level = 0.95) +
+  labs(
+    title = "Civic Engagement's Effect on Trump Voting",
+    subtitle = "Effect strengthens with controls, suggesting it's not just demographics",
+    x = "Civic Opportunities (OPC)",
+    y = "Odds Ratio for Voting Trump"
+  ) +
+  theme_minimal()
+print(modelplot1)
+
+
+modelpartisan1 <- modelsummary(list(
+  "PID Direction - Naive" = model_pid_naive,
+  "PID Direction - Controlled" = model_pid_controlled,
+  "PID Strength - Naive" = model_strength_naive,
+  "PID Strength - Controlled" = model_strength_controlled), output = "html", stars = TRUE)
+print(modelpartisan1)
+
+
 ```

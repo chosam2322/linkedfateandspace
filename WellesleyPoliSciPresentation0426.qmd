@@ -1,0 +1,141 @@
+---
+title: "Civil Society, Race, and Local Context in the 2024 Election"
+author: "Christian Hosam and Norris Davis"
+format:
+  revealjs:
+    transition: "fade"
+    footer: "Davis and Hosam"
+    theme: moon
+    slideNumber: "c/t"
+    controls-layout: bottom-right
+    
+---
+
+## Motivation
+
+![Blue Rose Democratic Party 2024 Post-Mortem](blueroseresearch.png)
+
+## Motivation {.smaller}
+
+- We know that in 2024, there was a major shift in terms of the support that Donald Trump received from communities of color. 
+
+
+::: {.fragment}
+- What this plot also tells us is that it was centered in certain places around the country. 
+:::
+
+::: {.fragment}
+- What is harder to tell is what, if anything, about those communities and their local contexts might have contributed to this shift.
+:::
+
+## Civil Society and Political Behavior {.smaller}
+
+- Extant literature tells us that politics is increasingly becoming nationalized, with more and more people taking their behavioral cues from the national political environment. However, we also know that there are still a plethora of ways in which local context shapes lived realities that should intersect with political behavior.
+
+
+::: {.fragment}
+- That said, civic engagement is often conceptualized as coterminous with individual level participation, making it hard to disentangle underlying ideological considerations from community level variables that might shape access, information, and willingness to participate and the nature of that participation.
+:::
+
+::: {.fragment}
+- There is also recent work by Candis Watts-Smith, Hannah Walker, and Tehama Lopez-Bunyasi showing that perceptions of neighborhood quality has a positive relationship with belief in linked fate for African Americans (2025)
+:::
+
+::: {.fragment}
+- This means that local context matters but its relationship to political behavior is likely something that is mediating other, more canonical factors that we already know shape political behavior.
+::: 
+
+## Civic Opportunity Dataset 
+![de Vries, Han, and Kim (*Nature 2024*)](civicoppscreenshot.png)
+
+## Method {.smaller}
+We merge the Civic Opportunity Dataset (henceforth COD) with the 2024 wave of the Collaborative Multiracial Postelection Survey (henceforth CMPS) by connecting the county-level FIPS codes in the COD to the county level indicator in the CMPS. This allows us to examine the relationship between civil society and political behavior in the context of the 2024 election. 
+
+
+## Research Questions 
+::: {.fragment}
+In what ways did civic engagement at the local level shape the political decision-making of communities of color in the 2024 election? We look at this in four ways:
+:::
+
+::: {.fragment}
+    - Does the density of civil society in a given county predict the likelihood that a respondent in that county voted for Donald Trump in the 2024 election?
+:::
+
+::: {.fragment}
+    - Does the density of civil society in a given county predict partisan identification and strength for a given resident within that county?
+:::
+
+::: {.fragment}
+    - Does the density of civil society in a given county attenuate the likelihood that a respondent's racial resentment and/or anti-immigrant bias would predict their likelihood of voting for Donald Trump in the 2024 election?
+:::
+
+::: {.fragment}
+    - Does the density of civil society in a given county shape the magnitude of people's linked fate belief?
+:::
+
+# Results
+
+## Density of Civil Society and Voting for Donald Trump in 2024 {.nostretch}
+![Table 1](table_comparison_initial.png){width=80%}
+
+## Civil Society and 2024 Donald Trump Support
+![Figure 1](model_comparison_initial.png)
+
+
+## Partisan Affiliation
+![Table 2](table_comparison_partisan.png){width=80%}
+
+
+## Partisan Affiliation
+![Figure 2](model_comparison_partisanship_race.png){width=80%}
+
+
+## Racial Resentment
+![Table 3](table_rr_comparison.png){width=80%}
+
+## Racial Resentment
+![Figure 3](model_rr_comparison.png){width=80%}
+
+## Anti-Immigrant Bias
+![Table 4](table_iab_comparison.png){width=80%}
+
+
+## Linked Fate Belief
+![Table 5](table_linked_fate_comparison.png)
+
+
+## Implications {.smaller}
+- This seems like a potential first step in connecting a distinct conception of civil society to political behavior
+
+:::{.fragment}
+- It also seems to have particular importance to Asian American voters, though more research needs to be done to understand why that is
+:::
+
+:::{.fragment}
+- It is also the case that density of civil society has some moderating effect on the relationship between racial resentment and Trump support though the evidence there is weak and more research needs to be done to understand the mechanisms at play there
+:::
+
+:::{.fragment}
+- Finally, it seems that linked fate is not correlated to local context, which contradicts the Watts-Smith et al findings but suggests that the relationship between local context and political behavior is likely still eaten up by these more canonical understandings of race and politics
+:::
+
+
+## Limitations {.smaller}
+- Because this was the first wave that had a county level indicator, we can't think of this data longitudinally, limiting any causal claims we might want to make 
+
+:::{.fragment}
+- Similarly, the COD is only a snapshot of civil society at one point in time, so we can't be sure that the density of civil society in a given county is something that is stable over time or something that is more fluid and responsive to political events. Our sense is that civic organizations aren't turning over at such high rates that this would only matter for this particular moment in time, but it's still something to keep in mind.
+:::
+
+:::{.fragment}
+- Finally, there are likely other factors that are shaping the relationship between local context and political behavior that we aren't able to capture with this data, with particular respect to the Asian American and Latino communities around immigrant status which would need to be done in a subsequent analysis
+:::
+
+## Next Steps {.smaller}
+- What is the most interesting, novel way to frame a study like this one?
+
+:::{.fragment}
+- What would be the first order of business in terms of what to do next with this project in your opinion? We are open to suggestions!
+:::
+
+# THANK YOU!
