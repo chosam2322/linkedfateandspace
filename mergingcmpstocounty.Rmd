@@ -28,7 +28,7 @@ options(tigris_quiet = TRUE)
 ```{r Step 0: data ingestion, include=TRUE}
 cmps2024 <- read_dta(here("cmps2024_primaryadult_091025.dta"))
 civicorgdata <- read_csv(here("mma_sc_demo.csv"))
-countylookuptable <- read_csv(here("State,_County_and_City_FIPS_Reference_Table_20260403.csv"))
+countylookuptable <- read_csv(here("State,_County_and_City_FIPS_Reference_Table_20260402.csv"))
 ```
 
 ```{r Step 1: Checking Data for Missingness on County, include=TRUE}
@@ -1292,7 +1292,7 @@ sum(is.na(cmps_counties_merged_2024$FIPS))
   
 unmatched_cases_secondpass <- cmps_counties_merged_2024 %>%
   filter(is.na(FIPS)) %>%
-  select(state_name, county_name, )
+  dplyr::select(state_name, county_name) %>%
   arrange(state_name)
 
 print("Counties that didn't match to FIPS:")
