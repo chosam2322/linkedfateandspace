@@ -1,0 +1,492 @@
+---
+title: "CivicEngagement_Part2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(janitor)
+library(here)
+library(haven)
+library(modelsummary)
+library(ggeffects)
+library(margins)
+library(scales)
+library(nnet)
+library(broom)
+library(tigris)
+library(sandwich)
+library(lmtest)
+```
+
+```{r Step 0: data ingestion, include=TRUE}
+cmps_merged <- read_csv(here("cmps_merged_civicorgdata_2024.csv"))
+```
+
+```{r Step 1: Do Dense Civic Networks Predict Racial Resentment, include=TRUE}
+resentmentmodel_naive <- lm(q181 ~ opc, 
+                               data = cmps_merged)
+summary(resentmentmodel_naive)
+
+#Create Covariates
+cmps_merged$gender_factor <- factor(cmps_merged$s14, 
+                                   levels = 1:3,
+                                   labels = c("Man", "Woman", "Non-binary"))
+
+cmps_merged$income_factor <- factor(cmps_merged$hhinc, 
+                                   levels = 1:5,
+                                   labels = c("Less than $39k", "$40k-$59k", 
+                                             "$60k-$99k", "$100k+", "Don't know"))
+
+cmps_merged$income_ordinal <- ifelse(cmps_merged$s20 == 13, NA, cmps_merged$s20)
+
+cmps_merged$education_factor <- factor(cmps_merged$s17, 
+                                      levels = 1:7,
+                                      labels = c("Grades 1-8", "Some high school", 
+                                                "High school graduate or GED", "Some college",
+                                                "Associates, 2-year degree", "Bachelors, 4-year degree",
+                                                "Post-graduate degree"))
+
+cmps_merged$age_factor <- factor(cmps_merged$agecat, 
+                                levels = 1:5,
+                                labels = c("16-17 yrs", "18-29 yrs", "30-44 yrs", 
+                                          "45-64 yrs", "65+ yrs"))
+
+# You might want to create age from birth year for easier interpretation
+cmps_merged$agenum <- 2024 - cmps_merged$s2
+
+
+cmps_merged$region_factor <- factor(cmps_merged$region, 
+                                   levels = 1:4,
+                                   labels = c("Midwest", "Northeast", "South", "West"))
+
+cmps_merged$urban_factor <- factor(cmps_merged$s24, 
+                                  levels = 1:5,
+                                  labels = c("Large urban area", "Large suburb near large city",
+                                            "Small suburb near small town or city", 
+                                            "Small town or small city", "Rural area"))
+
+cmps_merged$race_factor <- factor(cmps_merged$qraceid,
+                                 levels = 1:6,
+                                 labels = c("White",
+                                           "Latino", 
+                                           "Black",
+                                           "Asian",
+                                           "Native American",
+                                           "MENA"))
+
+resentmentmodel_controlled <-  lm(q181 ~ opc + race_factor + gender_factor + income_ordinal + 
+                               education_factor + agenum + region_factor + urban_factor + pid7, 
+                               data = cmps_merged)
+summary(resentmentmodel_controlled)
+#No Evidence that county level civic organization density predicts anything relating to racial resentment.
+```
+
+```{r Step 2: Do Dense Civic Networks Predict Congressional Elections, include=TRUE}
+# Create the Democratic vote indicator variable
+cmps_merged$dem_cong_vote <- as.numeric(cmps_merged$q18 == 2)
+
+# Run the regression
+cong_model_naive <- lm(opc ~ dem_cong_vote, data = cmps_merged)
+summary(cong_model_naive)
+
+
+#Run Regression with Controls
+cong_model_controlled <- lm(dem_cong_vote ~ opc + race_factor + gender_factor + income_ordinal + 
+    education_factor + agenum + region_factor + urban_factor + 
+    pid7, data = cmps_merged)
+
+summary(cong_model_controlled)
+
+#Run Regressions with County Level Clustered Standard Errors
+# Clustered standard errors at county level
+cong_naive_clusterse <- coeftest(cong_model_naive, vcov = vcovCL, cluster = ~FIPS)
+print(cong_naive_clusterse)
+
+#Also no evidence that county level density predicts voting for the Democratic Candidate for Congress in 2024, with or without clustering standard errors at the county level. One thing worth noting is that Age (agenum): 0.0007 (significant) - meaning that older voters in this model are slightly more Democratic 
+```
+
+```{r Step 3: Do Dense Civic Networks Predict Participation, include=TRUE}
+cmps_merged$voted_2024 <- as.numeric(cmps_merged$q12 == 3 | cmps_merged$q12 == 4)
+cmps_merged$voted_2022 <- as.numeric(cmps_merged$q13 == 3 | cmps_merged$q13 == 4)
+cmps_merged$voted_2020 <- as.numeric(cmps_merged$q14 == 3 | cmps_merged$q14 == 4)
+cmps_merged$voted_2018 <- as.numeric(cmps_merged$q15 == 3 | cmps_merged$q15 == 4)
+cmps_merged$voted_both <- as.numeric((cmps_merged$q12 == 3 | cmps_merged$q12 == 4) & 
+                                    (cmps_merged$q14 == 3 | cmps_merged$q14 == 4))
+cmps_merged$voted_all <- as.numeric((cmps_merged$q12 == 3 | cmps_merged$q12 == 4) & 
+                                    (cmps_merged$q14 == 3 | cmps_merged$q14 == 4) &
+                                    (cmps_merged$q13 == 3 | cmps_merged$q13 == 4) & 
+                                    (cmps_merged$q15 == 3 | cmps_merged$q15 == 4))
+
+model_vote_2024 <- lm(voted_2024 ~ opc, data = cmps_merged)
+summary(model_vote_2024)
+
+model_vote_2020 <- lm(voted_2020 ~ opc, data = cmps_merged)
+summary(model_vote_2020)
+
+model_vote_both <- lm(voted_both ~ opc, data = cmps_merged)
+summary(model_vote_both)
+
+model_vote_all <- lm(voted_all ~ opc, data = cmps_merged)
+summary(model_vote_all)
+
+model_vote_2024_controlled <- lm(voted_2024 ~ opc + race_factor + gender_factor + income_ordinal + 
+                               education_factor + agenum + region_factor + urban_factor + pid7, 
+                               data = cmps_merged)
+summary(model_vote_2024_controlled)
+
+
+model_vote_2020_controlled <- lm(voted_2020 ~ opc + race_factor + gender_factor + income_ordinal + 
+                               education_factor + agenum + region_factor + urban_factor + pid7, 
+                               data = cmps_merged)
+summary(model_vote_2020_controlled)
+
+model_vote_both_controlled <- lm(voted_both ~ opc + race_factor + gender_factor + income_ordinal + 
+                               education_factor + agenum + region_factor + urban_factor + pid7, 
+                               data = cmps_merged)
+summary(model_vote_both_controlled)
+
+model_vote_all_controlled <- lm(voted_all ~ opc + race_factor + gender_factor + income_ordinal + 
+                               education_factor + agenum + region_factor + urban_factor + pid7, 
+                               data = cmps_merged)
+summary(model_vote_all_controlled)
+
+# Test the interaction for all three voting models
+model_2024_interaction <- lm(voted_2024 ~ opc * agenum + race_factor + gender_factor + 
+                            income_ordinal + education_factor + region_factor + 
+                            urban_factor + pid7, data = cmps_merged)
+
+model_2020_interaction <- lm(voted_2020 ~ opc * agenum + race_factor + gender_factor + 
+                            income_ordinal + education_factor + region_factor + 
+                            urban_factor + pid7, data = cmps_merged)
+
+model_both_interaction <- lm(voted_both ~ opc * agenum + race_factor + gender_factor + 
+                            income_ordinal + education_factor + region_factor + 
+                            urban_factor + pid7, data = cmps_merged)
+
+# Test interactions for midterms
+model_2022_interaction <- lm(voted_2022 ~ opc * agenum + race_factor + gender_factor + 
+                            income_ordinal + education_factor + region_factor + 
+                            urban_factor + pid7, data = cmps_merged)
+
+model_2018_interaction <- lm(voted_2018 ~ opc * agenum + race_factor + gender_factor + 
+                            income_ordinal + education_factor + region_factor + 
+                            urban_factor + pid7, data = cmps_merged)
+
+#Test interaction for cumulative voting from 2018-2024
+model_all_interaction <- lm(voted_all ~ opc * agenum + race_factor + gender_factor + 
+                            income_ordinal + education_factor + region_factor + 
+                            urban_factor + pid7, data = cmps_merged)
+# Check the interaction terms
+summary(model_2024_interaction)
+summary(model_2022_interaction)
+summary(model_2020_interaction)
+summary(model_2018_interaction)
+summary(model_both_interaction)
+summary(model_all_interaction)
+
+model_minimal <- lm(voted_2024 ~ opc + agenum + race_factor + gender_factor + 
+                   income_factor + pid7, data = cmps_merged)
+summary(model_minimal)
+#There is evidence to suggest that density of civic engagement predicts voting in the 2024 election. Interestingly, the magnitude is higher in 2024 than in 2020, which might be because of Covid-19. In the 2024 regression, it is the case that civic density is predictive of voting at the .0001 level of significance (***). It goes down to the .001 level in 2020 (**). When I make it more stringent (voting in both elections), the magnitude increases back to the .0001 level. However, all of these reduce in the model with added control variables. In 2024, it goes from (***) to (**), in 2020 it goes from (**) to the .05 level. Finally, in the model examining cumulative voting, it goes from (***) to (*). Also important to note here is the age variable. It is the case that older voters dominate the model, particularly with respect to cumulative voting, older voters are much more likely to vote cumulatively. However, when I run an interaction model, we find that living in a place with high civic density was dramatically more important to voter turnout than for old people. This finding only applies to the 2024 election, suggesting that there is some important recency bias going on. 
+```
+
+```{r Step 4: Do Dense Civic Networks Predict Belief in Democracy, include=TRUE}
+#Naive Model
+model_democracy <- lm(q1 ~ opc, data = cmps_merged)
+summary(model_democracy)
+
+#Naive Model with Clustered Standard Errors
+clustered_democracy <- coeftest(model_democracy, vcov = vcovCL, cluster = ~FIPS)
+print(clustered_democracy)
+
+#Model with Control Variables 
+model_democracy_controlled <- lm(q1 ~ opc + race_factor + gender_factor + income_factor + 
+                               education_factor + agenum + region_factor + urban_factor + pid7, 
+                               data = cmps_merged)
+summary(model_democracy_controlled)
+
+#Model with Control Variables - Clustered Standard Errors
+model_democracy_controlled_cluster <- coeftest(model_democracy_controlled, vcov = vcovCL, cluster = ~FIPS)
+print(model_democracy_controlled_cluster)
+
+library(MASS)
+model_ordered <- polr(factor(q1) ~ opc, data = cmps_merged, Hess = TRUE)
+summary(model_ordered)
+
+#Checking the model again without urbanicity and region and education 
+model_democracy_minimal <- lm(q1 ~ opc + agenum + race_factor + gender_factor + 
+                   income_ordinal + pid7, data = cmps_merged)
+summary(model_democracy_minimal)
+
+#Also no evidence to suggest that dense civic networks predict a higher belief in the functioning of American democracy in the full model. Weakly significant in a more minimal model
+```
+
+```{r Step 5: Age and Economic Optimism, include = TRUE}
+# Option A: Focus on young people (say, under 40) and test civic density effect on optimism
+young_sample <- subset(cmps_merged, agenum < 40)
+
+model_young_optimism <- lm(q30 ~ opc + race_factor + gender_factor + 
+                          income_factor + education_factor + region_factor + 
+                          urban_factor + pid7, data = young_sample)
+
+# Option B: Full interaction model to see if civic density affects optimism differently by age
+model_optimism_interaction <- lm(q30 ~ opc * agenum + race_factor + gender_factor + 
+                                income_factor + education_factor + region_factor + 
+                                urban_factor + pid7, data = cmps_merged)
+
+summary(model_young_optimism)
+summary(model_optimism_interaction)
+
+#Checking in with minimal model
+model_young_optimism_minimal <- lm(q30 ~ opc + agenum + race_factor + gender_factor + 
+                   income_ordinal + pid7, data = young_sample)
+
+model_optimism_interaction_minimal <- lm(q30 ~ opc * agenum + race_factor + gender_factor + 
+                                income_ordinal + pid7, data = cmps_merged)
+
+summary(model_young_optimism_minimal)
+summary(model_optimism_interaction_minimal)
+#Young people in civically dense areas are more economically pessimistic. opc coefficient: +0.053* (significant, p=0.044) in the sample restricted to young people. No interaction term so its not an age gradient but the overall effect is largely driven by young people. Other notable patterns include Higher income = more optimistic (strong negative coefficients), Republicans more optimistic (-0.060 for pid7), Rural/small towns more pessimistic than big cities, Women and non-binary people more pessimistic. However, this is likely a matter of model overfit because in the minimal model, the effects go away
+```
+
+```{r Step 6: Age and Civic Trust, include=TRUE}
+# Model 1: Young people only (same age cutoff as before)
+model_young_gov_trust <- lm(q72 ~ opc + race_factor + gender_factor + 
+                           income_factor + education_factor + region_factor + 
+                           urban_factor + pid7, data = young_sample)
+
+# Model 2: Full interaction model  
+model_gov_trust_interaction <- lm(q72 ~ opc * agenum + race_factor + gender_factor + 
+                                 income_factor + education_factor + region_factor + 
+                                 urban_factor + pid7, data = cmps_merged)
+
+# Model 3: Revised Model
+model_gov_trust_young_minimal <- lm(q72 ~ opc + agenum + race_factor + gender_factor + 
+                                income_ordinal + pid7, data = young_sample)
+model_gov_trust_interaction_minimal <- lm(q72 ~ opc * agenum + race_factor + gender_factor + 
+                                income_ordinal + pid7, data = cmps_merged)
+
+summary(model_young_gov_trust)
+summary(model_gov_trust_interaction)
+summary(model_gov_trust_young_minimal)
+summary(model_gov_trust_interaction_minimal)
+#The minimal model shows that civic density actually has a marginally significant negative effect on government trust among young people (negative coefficient means more distrust since higher values = less trust), whereas the original model showed no effect at all. When we remove the noise from education, region, and urban factors, we can actually detect a slight effect where civic organizations make young people slightly more distrustful of government.
+```
+
+```{r Step 7: Age and Belief in the Importance of Civic Participation, include=TRUE}
+# Model 1: Young people only - Charitable donations effectiveness
+model_young_charity <- lm(q65r1 ~ opc + race_factor + gender_factor + 
+                         income_factor + education_factor + region_factor + 
+                         urban_factor + pid7, data = young_sample)
+
+# Model 2: Young people only - Political donations effectiveness  
+model_young_donations <- lm(q65r2 ~ opc + race_factor + gender_factor + 
+                           income_factor + education_factor + region_factor + 
+                           urban_factor + pid7, data = young_sample)
+
+# Model 3: Young people only - Voting effectiveness
+model_young_voting <- lm(q65r3 ~ opc + race_factor + gender_factor + 
+                        income_factor + education_factor + region_factor + 
+                        urban_factor + pid7, data = young_sample)
+
+# And the interaction models for each:
+model_charity_interaction <- lm(q65r1 ~ opc * agenum + race_factor + gender_factor + 
+                               income_factor + education_factor + region_factor + 
+                               urban_factor + pid7, data = cmps_merged)
+
+model_donations_interaction <- lm(q65r2 ~ opc * agenum + race_factor + gender_factor + 
+                                 income_factor + education_factor + region_factor + 
+                                 urban_factor + pid7, data = cmps_merged)
+
+model_voting_interaction <- lm(q65r3 ~ opc * agenum + race_factor + gender_factor + 
+                              income_factor + education_factor + region_factor + 
+                              urban_factor + pid7, data = cmps_merged)
+
+
+summary(model_young_charity)
+summary(model_young_donations)
+summary(model_young_voting)
+summary(model_charity_interaction)
+summary(model_donations_interaction)
+summary(model_voting_interaction)
+
+#Minimal Model Checks of Participation Checks 
+# Model 1: Young people only - Charitable donations effectiveness
+minimal_young_charity <- lm(q65r1 ~ opc + race_factor + gender_factor + 
+                         income_ordinal + pid7, data = young_sample)
+
+# Model 2: Young people only - Political donations effectiveness  
+minimal_young_donations <- lm(q65r2 ~ opc + race_factor + gender_factor + 
+                           income_ordinal + pid7, data = young_sample)
+
+# Model 3: Young people only - Voting effectiveness
+minimal_young_voting <- lm(q65r3 ~ opc + race_factor + gender_factor + 
+                        income_ordinal + pid7, data = young_sample)
+
+#Model 4 - Minimal Model with Charity
+minimal_charity_interaction <- lm(q65r1 ~ opc * agenum + race_factor + gender_factor + 
+                               income_ordinal + pid7, data = cmps_merged)
+
+#Model 5 - Minimal Model with Donations
+minimal_donations_interaction <- lm(q65r2 ~ opc * agenum + race_factor + gender_factor + 
+                                 income_ordinal + pid7, data = cmps_merged)
+
+#Model 6 - Minimal Model with Voting
+minimal_voting_interaction <- lm(q65r3 ~ opc * agenum + race_factor + gender_factor + 
+                              income_ordinal + pid7, data = cmps_merged)
+
+summary(minimal_young_charity)
+summary(minimal_young_donations)
+summary(minimal_young_voting)
+summary(minimal_charity_interaction)
+summary(minimal_donations_interaction)
+summary(minimal_voting_interaction)
+#Index Model of this
+# First, check how correlated the three effectiveness measures are
+cor(cmps_merged[c("q65r1", "q65r2", "q65r3")], use = "complete.obs")
+
+# Create an additive index (mean of the three measures)
+cmps_merged$participation_effectiveness <- rowMeans(cmps_merged[c("q65r1", "q65r2", "q65r3")], 
+                                                   na.rm = TRUE)
+
+young_sample <- subset(cmps_merged, agenum < 40)
+# Check the distribution
+summary(cmps_merged$participation_effectiveness)
+hist(cmps_merged$participation_effectiveness, 
+     main = "Distribution of Participation Effectiveness Beliefs",
+     xlab = "Mean Effectiveness Score (1-5)")
+
+# Now run our models with the index as DV
+model_young_effectiveness <- lm(participation_effectiveness ~ opc + race_factor + gender_factor + 
+                               income_factor + education_factor + region_factor + 
+                               urban_factor + pid7, data = young_sample)
+
+model_effectiveness_interaction <- lm(participation_effectiveness ~ opc * agenum + race_factor + gender_factor + 
+                                     income_factor + education_factor + region_factor + 
+                                     urban_factor + pid7, data = cmps_merged)
+
+summary(model_young_effectiveness)
+summary(model_effectiveness_interaction)
+#No effect in any specification here - civic density doesn't have an effect on people's views of different types of participatory activities (same for the participation measures even when the model is minimized)
+```
+
+```{r Step 8: Age and Political Interest, include=TRUE}
+# Young people model
+model_young_political_interest <- lm(q25b ~ opc + race_factor + gender_factor + 
+                                    income_factor + education_factor + region_factor + 
+                                    urban_factor + pid7, data = young_sample)
+
+# Full interaction model
+model_political_interest_interaction <- lm(q25b ~ opc * agenum + race_factor + gender_factor + 
+                                          income_factor + education_factor + region_factor + 
+                                          urban_factor + pid7, data = cmps_merged)
+
+summary(model_young_political_interest)
+summary(model_political_interest_interaction)
+
+#Minimal Model Check
+# Young people model
+minimal_young_political_interest <- lm(q25b ~ opc + race_factor + gender_factor + 
+                                    income_ordinal + pid7, data = young_sample)
+
+# Full interaction model
+minimal_political_interest_interaction <- lm(q25b ~ opc * agenum + race_factor + gender_factor + 
+                                          income_ordinal + pid7, data = cmps_merged)
+
+summary(minimal_young_political_interest)
+summary(minimal_political_interest_interaction)
+#This means civic density makes young people MORE interested in politics (lower scores = more following of election news). In the interaction model, the positive interaction means that the civic density effect is STRONGER for younger people (since higher age values reduce the negative civic effect). Civic organizations are functioning as political engagement amplifiers - they're not changing what young people think about participation effectiveness or government trustworthiness, but they're getting them much more interested in and attentive to politics, which translates directly into voting behavior. The upshot here is that this could be seen as the mechanism driving the age-related effects. Civic density is important for young people in the 2024 election because it makes them more attentive to the news cycle which then in turn drives their vote. The issue is that this is limited to the 2024 election, which is complex (though it's not as if it didn't matter in 2020 - just that the age gradient isn't there)
+```
+
+```{r Step 9: Age and Alternative Trust Measure - Congress, include=TRUE}
+model_young_congress_touch <- lm(q73 ~ opc + race_factor + gender_factor + 
+                                income_factor + education_factor + region_factor + 
+                                urban_factor + pid7, data = young_sample)
+
+model_congress_interaction <- lm(q73 ~ opc * agenum + race_factor + gender_factor + 
+                               income_factor + education_factor + region_factor + 
+                               urban_factor + pid7, data = cmps_merged)
+
+summary(model_young_congress_touch)
+summary(model_congress_interaction)
+
+#Minimal Model Check
+minimal_young_congress_touch <- lm(q73 ~ opc + race_factor + gender_factor + 
+                                income_ordinal + pid7, data = young_sample)
+
+minimal_congress_interaction <- lm(q73 ~ opc * agenum + race_factor + gender_factor + 
+                               income_ordinal + pid7, data = cmps_merged)
+
+summary(minimal_young_congress_touch)
+summary(minimal_congress_interaction)
+#No evidence civic density is shaping the belief that Congress is out of touch with working people - robust to model respecification 
+```
+
+```{r Step 10: Age and Alternative Interest Measure, include=TRUE}
+model_young_political_understanding <- lm(q75 ~ opc + race_factor + gender_factor + 
+                                         income_factor + education_factor + region_factor + 
+                                         urban_factor + pid7, data = young_sample)
+
+model_understanding_interaction <- lm(q75 ~ opc * agenum + race_factor + gender_factor + 
+                                     income_factor + education_factor + region_factor + 
+                                     urban_factor + pid7, data = cmps_merged)
+
+summary(model_young_political_understanding)
+summary(model_understanding_interaction)
+
+#Minimal Model Check
+minimal_young_political_understanding <- lm(q75 ~ opc + race_factor + gender_factor + 
+                                         income_ordinal + pid7, data = young_sample)
+
+minimal_understanding_interaction <- lm(q75 ~ opc * agenum + race_factor + gender_factor + 
+                                     income_ordinal + pid7, data = cmps_merged)
+
+summary(minimal_young_political_understanding)
+summary(minimal_understanding_interaction)
+#Also no effects on confidence about political awareness - interesting contrast to question on following the news - robust to model respecification
+```
+
+```{r Step 11: Interacting Economic Pessimism and Media Consumption, include=TRUE}
+# 1. Check correlation between political interest (Q25b) and economic pessimism (Q30)
+cor(cmps_merged$q25b, cmps_merged$q30, use = "complete.obs")
+
+# 2. Does controlling for political interest eliminate the civic density effect on economic pessimism?
+model_economic_controlled <- lm(q30 ~ opc + q25b + race_factor + gender_factor + 
+                               income_factor + education_factor + region_factor + 
+                               urban_factor + pid7, data = young_sample)
+
+# 3. Does controlling for economic pessimism eliminate the civic density effect on political interest?
+model_political_controlled <- lm(q25b ~ opc + q30 + race_factor + gender_factor + 
+                                income_factor + education_factor + region_factor + 
+                                urban_factor + pid7, data = young_sample)
+
+summary(model_economic_controlled)
+summary(model_political_controlled)
+
+#Minimal Model Check
+# 2. Does controlling for political interest eliminate the civic density effect on economic pessimism?
+minimal_economic_controlled <- lm(q30 ~ opc + q25b + race_factor + gender_factor + 
+                               income_ordinal + pid7, data = young_sample)
+
+# 3. Does controlling for economic pessimism eliminate the civic density effect on political interest?
+minimal_political_controlled <- lm(q25b ~ opc + q30 + race_factor + gender_factor + 
+                                income_ordinal + pid7, data = young_sample)
+
+summary(minimal_economic_controlled)
+summary(minimal_political_controlled)
+
+# 1. Does the economic pessimism effect disappear across all ages when controlling for political interest?
+minimal_economic_interaction_controlled <- lm(q30 ~ opc * agenum + q25b + race_factor + gender_factor + 
+                                             income_ordinal + pid7, data = cmps_merged)
+
+# 2. Does the political interest effect persist across all ages when controlling for economic pessimism?
+minimal_political_interaction_controlled <- lm(q25b ~ opc * agenum + q30 + race_factor + gender_factor + 
+                                              income_ordinal + pid7, data = cmps_merged)
+summary(minimal_economic_interaction_controlled)
+summary(minimal_political_interaction_controlled)
+#The correlation between political interest (q25b) and economic pessimism (q30) is 0.17 - a moderate positive correlation. This makes sense since lower q25b = more political interest and higher q30 = more economic pessimism, so the positive correlation means more political interest is associated with more economic pessimism. Looking at the controlled models,For economic pessimism controlling for political interest: opc coefficient goes from 0.053* (original) to 0.065* (controlled) - it actually gets STRONGER, suggesting the civic density effect on economic pessimism is NOT mediated through political interest. For political interest controlling for economic pessimism: opc coefficient goes from -0.129** (original) to -0.144** (controlled) - it also gets STRONGER, suggesting the civic density effect on political interest is NOT mediated through economic pessimism. Both effects remain significant and actually get stronger when controlling for the other variable. This suggests they are largely independent pathways. In the minimal economic model (q30 ~ opc + q25b + controls): opc coefficient is 0.040 (p=0.106) - not significant, q25b coefficient is 0.103*** - highly significant. In the minimal political controlled model (q25b ~ opc + q30 + controls): opc coefficient is -0.166*** (p<0.001) - highly significant and even stronger than before, q30 coefficient is 0.298*** - highly significant. So when we control for political interest in the economic pessimism model, the civic density effect becomes non-significant. But when we control for economic pessimism in the political interest model, the civic density effect remains strong and actually gets stronger. This suggests that: The economic pessimism effect we saw earlier was likely mediated through political interest. Political interest is the primary pathway, and any economic pessimism effect was secondary/spurious. The correlation between political interest and economic pessimism (which we calculated earlier as 0.17) is meaningful - more politically interested people are more economically pessimistic This confirms that the main mechanism is civic orgs -> political interest -> voting, and the economic pessimism was just a byproduct of being more politically engaged
+```

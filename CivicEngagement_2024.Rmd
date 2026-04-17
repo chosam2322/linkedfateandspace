@@ -13,7 +13,6 @@ library(here)
 library(haven)
 library(modelsummary)
 library(ggeffects)
-library(MASS)
 library(margins)
 library(scales)
 library(nnet)
@@ -98,14 +97,14 @@ model_comparison <- bind_rows(
   tidy(model2_controlled, conf.int = TRUE) %>% mutate(model = "Controlled")
 ) %>%
   filter(term == "opc") %>%
-  select(model, estimate, std.error, p.value, conf.low, conf.high)
+  dplyr::select(model, estimate, std.error, p.value, conf.low, conf.high)
 
 print(model_comparison)
 
 # Check model fit comparison
 glance(model1) %>% mutate(model = "Naive") %>%
   bind_rows(glance(model2_controlled) %>% mutate(model = "Controlled")) %>%
-  select(model, AIC, BIC, logLik, deviance, nobs) 
+  dplyr::select(model, AIC, BIC, logLik, deviance, nobs) 
 
 #Full Model - Black Respondents
 cmps_merged_black <- cmps_merged %>%
@@ -387,7 +386,6 @@ model3_racial_resentment <- glm(trump_vote ~ opc + q181 + gender_factor + income
                                family = binomial)
 
 # Compare the OPC coefficients
-library(broom)
 
 coefficient_comparison <- bind_rows(
   tidy(model2_controlled) %>% filter(term == "opc") %>% mutate(model = "Without Racial Resentment"),
