@@ -1,4 +1,13 @@
-.Rproj.user
-.Rhistory
-.RData
-.Ruserdata
+# Data files - keep local only
+*.csv
+*.dta
+*.rds
+.DS_Store
+**/dataverse_files*/
+**/*selected*/
+**/*Primary*Samples*/
+**/*MASTER*INSTRUMENT*/
+*.shp
+*.shx
+*.dbf
+*.prj
