@@ -1,5 +1,5 @@
 ---
-title: "Civic Density and American Political Behavior: How Residential Civic Diversity Shapes Political Participation "
+title: "Supply-Side Civic Engagement: How The Supply of Civic Opportunity Shapes Political Participation"
 date: today 
 format:
   pdf: 
@@ -22,7 +22,7 @@ author:
       
 keywords:
   - local politics, race, political geography
-bibliography: recessions.bib
+bibliography: supplysidecivic.bib
 csl: american-political-science-association.csl
 project: 
   execute-dir: project
@@ -52,9 +52,23 @@ library(pander)
 
 Few concepts within the study of politics hold as much purchase as the critical nature of civic life in shaping citizen’s political engagement. When individuals are recruited, convened, and informed by civic organizations, participation is thought to follow. While this foundational truism is oft-repeated as a logical and necessary truth, historically it has been limited empirically by measures of the demand side of civic engagement: individual trust, networks, and dispositions, all of which have been in decline for some time \[CITE\]. Far less attention is placed on the *supply side* of civic opportunity; the civic infrastructure that may be available or present in a community, regardless of individual membership.
 
-Part of the reason for this relative lack of scholarly attention is the lack of tools to do so. The demand side measures are largely drawn from self-reported survey measures that reflect individual's perception of their relationship to the state and their energy (or lack thereof) to participate in the democratic process. This is both substantively important and methodologically intuitive. But, as recent work on the nationalization of American politics, increased polarization, and the relationship between increased financial precarity and political decisionmaking highlights, people's individual choices are embedded within communities. Understanding the dynamics of local politics is thus important not only to evaluate demographic comparisons but also to understand what are the conditions under which people's decisions can be changed
+Generally, this demand side of civic engagement focuses on the effects of membership in civic associations has to an individual's propensity to be an active participant in democratic processes \[CITE\]. But to what extent do the meso-level features of civic organizations; the features that constitute the communities that they are embedded in, shape this propensity in ways that are distinct from individual-level membership?
 
-## Civic Density: A New Tool for a Canonical Question
+Contemporary scholarship on civic associations, by focusing on the characteristics of those who join, necessarily dial in on the ways that this membership can predict other types of behavior. But as recent work by Stephanie Ternullo argues, "place politics - or the correlation between where people live jand their partisanship - exists at multiple geographic scales." One way at getting at this, which is Ternullo's approach, is to compare similarly situated locations with differing partisan affiliations. Another approach, the one we take here, is to connect data on civic organizations aggregated to a local level with individual level survey data to track how the features of living within a community with a different composition of civic associations affects canonical measures of political participation, namely voter turnout and presidential vote choice.
+
+To do this, we construct a dataset that merges data recently compiled by Martin de Vries, Hahrie Han, and Jae Yeon Kim that measures civic opportunity at the county level to the 2024 wave of the Cooperative Post-Election Study (CMPS) to more deeply understand what we call supply-side civic engagement. We find that living in a county with a higher density of civic opportunities leads to a reduction in support for Donald Trump in the 2024 election. We also find that this same measure also predicts an increase in voter turnout, with a particularly strong impact for younger voters.
+
+While previous literature has ably and thoughtfully explored the relationship between social capital and political engagement, we believe that we are the first to pair data on the universe of civic organizations with rich, fine-grained data on political behavior, giving us leverage to mine key insights into a question that is similar, yet distinct to what is currently asked in the literature. Rather than asking how civic organizations drive political participation, we ask how living in a place that is more concentrated with these organizations shape political behavior.
+
+This contributes to the literature on social capital by articulating an alternative story that goes beyond the individual-level effects of civic bonds as driving these effects, instead focusing on ways that the formation of these bonds might be endogenous to the type of community in which they are forged. It contributes the literature on political behavior by exploring new tools to understand how local context shapes political decison-making in ways that are tied and untied from cognitive, psychologically-based models.
+
+## Civic Opportunity: A New Tool for a Canonical Question
+
+The features of a local community and their ability to shape a person's ability, desire, and choices of political participation are well-documented in the literature. There has been a recent suite of literature, however, that has raised questions about whether local features are being supplanted in importance by the importance of national-level trends. Work by scholars like Dan Hopkins which argue that much of the information that was previously gathered at the local level is now eaten up by heuristics about partisan cues that are largely generated through gathering information about federal-level elections. However, this type of information is only one dimension. Another dimension of local politics that could very well matter are the composite features of a community that shape access, facilitate conversation and political awareness, and provide opportunities to take part in civic activities that could be understood by those who participate in them as important for reasons either partially relevant or fully orthogonal to those national trends.
+
+But this is often hard to conceptualize.
+
+Part of the reason for this relative lack of scholarly attention is the lack of tools to do so. The demand side measures are largely drawn from self-reported survey measures that reflect individual's perception of their relationship to the state and their energy (or lack thereof) to participate in the democratic process. This is both substantively important and methodologically intuitive. But, as recent work on the nationalization of American politics, increased polarization, and the relationship between increased financial precarity and political decision making \[CITE\] highlights, people's individual choices are embedded within communities. Understanding the dynamics of local politics is thus important not only to evaluate demographic comparisons but also to understand what are the conditions under which people's decisions can be changed
 
 ## Data and Methods
 
