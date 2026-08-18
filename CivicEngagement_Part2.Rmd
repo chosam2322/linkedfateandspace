@@ -139,6 +139,8 @@ model_vote_2024_controlled <- lm(voted_2024 ~ opc + race_factor + gender_factor 
 summary(model_vote_2024_controlled)
 
 
+
+
 model_vote_2020_controlled <- lm(voted_2020 ~ opc + race_factor + gender_factor + income_ordinal + 
                                education_factor + agenum + region_factor + urban_factor + pid7, 
                                data = cmps_merged)
@@ -191,6 +193,30 @@ summary(model_all_interaction)
 model_minimal <- lm(voted_2024 ~ opc + agenum + race_factor + gender_factor + 
                    income_factor + pid7, data = cmps_merged)
 summary(model_minimal)
+
+#Print Model for Voting in the 2024 Election
+model_comparison_turnout <- modelplot(
+  list(
+    "Basic Model" = model_vote_2024,
+    "Model for Voting in 2020 and 2024" = model_vote_both,
+    "Model with Controls for 2024" = model_vote_2024_controlled,
+    "Model with Controls for 2020" = model_vote_2020_controlled,
+    "Model with Controls for Voting in Both Elections" = naive_model_asian
+  ),
+  coef_map = c("opc" = "Civil Society Density"),
+  coef_omit = "Intercept",
+) +
+  theme_minimal() +
+  labs(title = "Civic Engagement Effect on Voter Turnout in 2024 and 2020 Elections")
+
+print(model_comparison_turnout)
+ggsave(
+  filename = "model_comparison_turnout.png",
+  plot = model_comparison_turnout,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
 #There is evidence to suggest that density of civic engagement predicts voting in the 2024 election. Interestingly, the magnitude is higher in 2024 than in 2020, which might be because of Covid-19. In the 2024 regression, it is the case that civic density is predictive of voting at the .0001 level of significance (***). It goes down to the .001 level in 2020 (**). When I make it more stringent (voting in both elections), the magnitude increases back to the .0001 level. However, all of these reduce in the model with added control variables. In 2024, it goes from (***) to (**), in 2020 it goes from (**) to the .05 level. Finally, in the model examining cumulative voting, it goes from (***) to (*). Also important to note here is the age variable. It is the case that older voters dominate the model, particularly with respect to cumulative voting, older voters are much more likely to vote cumulatively. However, when I run an interaction model, we find that living in a place with high civic density was dramatically more important to voter turnout than for old people. This finding only applies to the 2024 election, suggesting that there is some important recency bias going on. 
 ```
 
