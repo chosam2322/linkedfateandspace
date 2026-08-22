@@ -1,10 +1,11 @@
 ---
-title: "Supply-Side Civic Engagement: How The Supply of Civic Opportunity Shapes Political Participation"
+title: "Civic Density: How The Supply of Civic Opportunity Shapes Political Participation"
 date: today 
 format:
   pdf: 
     word-count: "{{wordcount}}"
     number-sections: false
+    mainfont: Times New Roman
 author:
   - name: Christian Hosam
     email: christian_hosam@berkeley.edu
@@ -68,49 +69,47 @@ The features of a local community and their ability to shape a person's ability,
 
 Another dimension of local politics that could very well matter are the composite features of a community that shape access, facilitate conversation and political awareness, and provide opportunities to take part in civic activities that could be understood by those who participate in them as important for reasons either partially relevant or fully orthogonal to those national trends. This therefore can be seen as a form of resistance to an approach in which presidential electioneering absorbs all political behavior, particularly when it comes to the formation and maintenance of ideology [@cramer2016; @rodden2019]. Further, given the federalist nature of the United States, there are also particular forms of economic dispossession that take place at the local level that can shape a variety of political outcomes and attitudes [@cummings2009; @hankinson2024].
 
-Put together, there is a need to connect the universe of civic associations and its distinct impacts on American politics with how these impacts are shaping how people show up politically and make decisions in the political arena.
+Put together, there is a need to connect the universe of civic associations and its distinct impacts on American politics with how these impacts are shaping political attitudes and, perhaps most importantly of all, if it drives political behavior.
 
 To that end, recent work by Milan de Vries, Jae Yeon Kim, and Hahrie Han argues that without fine grained data on the resources available to different communities, we can know that social capital is a necessary precursor for social trust and cohesion but don't have anyway to know "without knowing where to go to cultivate it, or being able to ex ante anticipate where it might be strong or weak." [@devries2024]
 
-To get at this problem, the authors construct a dataset that takes a census of all civic organizations registered as non-profits with the IRS and pulls in information about the type of activities and opportunities for participation that they provide in order to track how civic opportunity is spread out across the country. And, in fact, they find that civic opportunity is itself correlated to many of the major forms of economic and political dispossession in the country. Their key variable of interest, civic opportunity (more on how they construct this measure below in the Methods section), is more concentrated in higher-income areas, areas with a higher proportion of non-Hispanic white residents, and a higher proportion of college graduates. Put another way, the chance to even take part in things that would serve as the pretext for forming civic bonds is itself tied to the ways that political opportunities are allocated in the country.
+To get at this problem, the authors construct a dataset that takes a census of all civic organizations registered as non-profits with the IRS and pulls in information about the type of activities and opportunities for participation that they provide in order to track how civic opportunity is spread out across the country. And, in fact, they find that civic opportunity is itself correlated to many of the major forms of economic and political dispossession in the country. Their key variable of interest, civic opportunity (more on how they construct this measure below in the Methods section), is more concentrated in higher-income areas, areas with a higher proportion of non-Hispanic white residents, and a higher proportion of college graduates. Put another way, the chance to even take part in things that would serve as the pretext for forming civic bonds is itself tied to the ways that political opportunities are allocated.
 
-But this leaves an open question on the table: to what extent does this inequality in civic opportunity shape political decision-making for those people that are embedded within these locations? Is it the case that because civic opportunity and the density of that opportunity is tied to demographic and social factors that it is unhelpful in giving us insight, which ironically would undercut the need for such a measure to have been constructed? Or, alternatively, is it the case that by identifying the relationship between outcomes such as voting, we are able to assess the importance of civic opportunity in a stronger, more forceful way?
+But this leaves an open question on the table: to what extent does this inequality in civic opportunity shape political decisions for those people that are embedded within these locations? Is it the case that because civic opportunity and the density of that opportunity is tied to demographic and social factors that it is unhelpful in giving us insight, which ironically would undercut the need for such a measure to have been constructed? Or, alternatively, is it the case that by identifying the relationship between outcomes such as voting, we are able to assess the importance of civic opportunity in a stronger, more forceful way?
 
-Our interpretation of the follow-up to de Vries, Kim, and Han is that they were using the measures that they constructed as outcome measures; dependent variables that they used to track the component features that predict living in a place that nurture or repel civic engagement. Our intervention is to instead use their measure as an input; an independent variable that we use to see how living in a place with more or less civic opportunities shapes political behavior, which we believes help pay off the promise of what they discuss in their article. What are the political manifestations of living in a place with a high concentration of organizations that give you the opportunity to develop your civic identity and practice? Does that opportunity translate into action? Moreover, does it translate in ways that are beneficial to one political party more than another?
+Our interpretation of the follow-up to de Vries, Kim, and Han is that they were using the measures that they constructed as outcome measures; dependent variables that they used to track the component features that predict living in a place that nurture or repel civic engagement. Our intervention is to instead use their measure as an input; an independent variable that we use to see how living in a place with more or less civic opportunities shapes political behavior, which we believes help pay off the promise of what they discuss in their article. What are the political manifestations of living in a place with a high concentration of organizations that give you the opportunity to develop your civic identity and practice? Does that opportunity translate into action?
 
 ## Data Collection
 
-To investigate the relationship between civic opportunity and political behavior, we merge the dataset constructed by de Vries, Kim, and Han (furthermore called the civic opportunity dataset) to the 2024 wave of the Collaborative Post-Election Study (CMPS). We used the CMPS because it provided us with two critical advantages. First, it has an oversample of respondents from communities of color, allowing us a higher degree of leverage into the particularistic impact that race could have to the question at hand. In addition, each respondent also identified the county that they lived in, giving us the ability to merge to the civic opportunity dataset at the level of the county. Each row of our dataset thus includes all information from the CMPS wave at the respondent level along with all information for the composite opportunity measure constructed by de Vries et al at the county level.
+To investigate the relationship between civic opportunity and political behavior, we merge the dataset constructed by de Vries, Kim, and Han (furthermore called the civic opportunity dataset) to the 2024 wave of the Collaborative Post-Election Study (CMPS) [@frasure]. We used the CMPS because it provided us with two critical advantages. First, it has an oversample of respondents from communities of color, allowing us a higher degree of leverage into the particularistic impact that race could have to the question at hand. In addition, each respondent also identified the county that they lived in, giving us the ability to merge to the civic opportunity dataset at the level of the county. Each row of our dataset thus includes all information from the CMPS wave at the respondent level along with all information for the composite opportunity measure constructed by de Vries et al at the county level.
 
-It should be noted that for our purposes, civic opportunity refers to an index that each organization that the de Vries et al collected information on that includes whether that organization:
+For our purposes, civic opportunity refers to an index that each organization that the de Vries et al collected information on that includes whether that organization:
 
-- provide volunteer opportunities,
+- provides volunteer opportunities,
 
-- offer membership,
+- offers membership,
 
-- offer ways to take civic or political action, or
+- offers ways to take civic or political action, or
 
-- hold community events
+- holds community events
 
 They had an overall universe for their dataset of 564,559 organizations. They then constructed an index for civic opportunity by creating a dummy score for each of the four items, re-scaling it from 0 to 1 (1 being an organization doing all and 0 being it doing none), summing those scores and normalizing them, and categorizing them into equally sized quintiles to be able to differentiate between higher and lower civic density. We think this measure allows us to credibly quantify a distinct measure for the study of politics because it is substantively relevant to the study of civic engagement while also being parsimonious with respect to a consistent yet robust construction of factors that extant literature already says serves as an anchor for civic engagement and social cohesion.
 
-We are thus able to use this as an independent variable to ask questions that can guide a different, yet incredibly relevant set of questions about the aftermath of the 2024 presidential election.
+We use this measure of what the authors call an opportunity score (but for the purposes of this paper will be called *civic density*) as an independent variable to ask questions that can guide a different, yet incredibly relevant set of questions about the aftermath of the 2024 presidential election. In this paper, we focus particularly on the question of the decision to vote or, more specifically, impact of civic density on voter turnout in the 2024 election.
 
 ## Research Question
 
 - *Did living in a county with a higher concentration of civic opportunity lead to higher voter turnout in the 2024 Election?*
 
-- *Did living in a place with a higher concentration of civic opportunity lead to a higher support for eventual President Donald Trump in the 2024 Election?*
-
-Our estimands of interest were therefore self-reported voter turnout and self-reported Presidential vote choice.
-
 ## Hypotheses
+
+Given both the existing literature that
 
 ## Limitations
 
 A couple of limitations to our study that we'd like to flag: first, the de Vries et al dataset was constructed in 2020 while the responses were fielded and gathered in 2024. We could imagine that there was some level of attrition and addition to the universe of civic organizations in the intervening years. We are limited because the original authors only did that pull the one time so in replicating we can't be sure that the organizations are absolutely the most up-to-date. However, given that reporting on the establishment of non-profits suggest that it increases a net rate of 1.9-2% in a given year in addition to the fact that these organizations are inclusive of those organizations that would not provide any civic opportunities, we are confident that any results we find will nonetheless provide legitimate insight into our research questions.
 
-Second, while we think that there are important insights to be drawn from understanding the type of organizations that are present within these measures, because its not present within the original dataset, we stick to just using the composite measure as our independent variable without any disaggregation under the hood in terms of if a county has a higher proportion of religious organizations, for example. However, we still feel like this composite measure, given the benefits that we outline above, is still incredibly ingsightful in its own right and testing its predictive power is a worthwhile endeavor to further our understanding of how civic engagement shapes American politics.
+Second, while we think that there are important insights to be drawn from understanding the type of organizations that are present within these measures, because its not present within the original dataset, we stick to just using the composite measure as our independent variable without any disaggregation under the hood in terms of if a county has a higher proportion of religious organizations, for example. However, we still feel like this composite measure, given the benefits that we outline above, is still insightful in its own right and testing its predictive power is a worthwhile endeavor to further our understanding of how civic engagement shapes American politics.
 
 Finally, we also recognize that self-reported turnout and vote share could be prone to mis-identification by the respondent and that the growing gold standard for studies like this one are validated voter turnout data, such as the one collected by a firm such as Catalist. While we are heartened by the increased rigor that this brings, we believe that self-reported turnout is helpful on its own terms because while the outcome measures might be self-reported, the civic opportunity measure is not and given that what we're after is a better sense how individuals make sense of their political resources [@verba1995], we think of this as a benefit rather than a drawback for the purposes of this study.
 
@@ -120,13 +119,11 @@ In order to get at the question of voter turnout, we estimate a model that regre
 
 $$VoterTurnout_i = \alpha_i + \beta(opc_{i}) + \Phi X_{i} + \varepsilon_{i} :$$
 
-Similarly, Trump vote share is estimated using a similar model: $$TrumpVoteShare_i = \alpha_i + \beta(opc_{i}) + \Phi X_{i} + \varepsilon_{i} :$$
-
 ## Does Civic Density Predict Turning Out to Vote?
 
-## Does Civic Opportunity Predict Voting for Trump?
+Across a range of specifications, civic density clearly predicts an increase in voter turnout. Under both linear and logistic regression specifications, county-level civic density is associated with a statistically significant increase in voter turnout (.0001% confidence level). The relationship remains significant even after controlling for race, gender, age, partisanship, and income (a regression that also included education, region, and urbanicity is included in the Appendix but retains the same relationship). Civic density is indeed a proxy for the type of community that has a higher propensity for turning out to vote.
 
-## Civic Density and Partisan Identification
+However, because of the initial findings in de Vries et al showing that civic density was associated with community-level characteristics that suggested higher proportion of white, upper-class, and highly-educated residents, we wanted to know if this effect was disproportionately shaping the turnout of people from different demographic backgrounds. Thus, we ran analyses in which we evaluated the impact of race, gender, age, and income to see
 
 ## Discussion
 

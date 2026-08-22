@@ -423,58 +423,67 @@ summary(model_turnout_gender_interaction_logit)
 ```
 
 ```{r Step 5: Turnout Visualizations, include=TRUE}
-#Coefficient Plots
+# Define model lists
 turnout_models_ols <- list(
   "Bivariate OLS" = model_vote_2024,
-  "OLS Regression w/Controls" = model_minimal,
-  "Interaction Model with Age" = model_2024_interaction_minimal
+  "OLS Regression w/Controls" = model_minimal
 )
 
-turnout_models_logit <- list(
-  "Bivariate Logit" = turnout_logit_1,
-  "Logit Regression w/Controls" = turnout_logit_2,
-  "Lean Logit + Age Int." = turnout_logit_3
-)
-
-p_coef_ols <- modelplot(
+coef_ols <- imap_dfr(
   turnout_models_ols,
-  coef_map = c(
-    "opc" = "Opportunity structure")
+  ~ tidy(.x, conf.int = TRUE) |> mutate(model = .y)
+) |>
+  filter(term %in% c("opc", "opc:age_c")) |>
+  mutate(
+    term = recode(
+      term,
+      "opc" = "Civic Density"
+    ),
+    shape_group = case_when(
+      grepl("Bivariate", model) ~ "Bivariate",
+      grepl("Controls", model) ~ "Controlled"
+    ),
+    model = factor(
+      model,
+      levels = c(
+        "Bivariate OLS",
+        "OLS Regression w/Controls"
+      )
+    )
+  )
+
+p_coef_ols <- ggplot(
+  coef_ols,
+  aes(x = estimate, y = model, shape = shape_group)
+) +
+  geom_point(size = 3, color = "black") +
+  geom_errorbarh(
+    aes(xmin = conf.low, xmax = conf.high),
+    height = 0.2,
+    color = "black"
   ) +
   geom_vline(xintercept = 0, linetype = 2, color = "gray50") +
+  facet_wrap(~term, scales = "free_x") +
+  scale_shape_manual(
+    values = c(
+      "Bivariate" = 16,
+      "Controlled" = 15,
+      "Interaction" = 17
+    )
+  ) +
   labs(
-    title = "Turnout models (OLS)",
+    title = "Baseline turnout models (OLS)",
     x = "Coefficient estimate",
     y = NULL
   ) +
-  theme_minimal(base_size = 12)
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
 
 p_coef_ols
-
-ggsave(
-  filename = "model_plot_olsturnoutmodels.png",
-  plot = p_coef_ols,
-  width = 8,
-  height = 6,
-  dpi = 300
-)
-
-
-p_coef_logit <- modelplot(
-  turnout_models_logit,
-  coef_map = c(
-    "opc" = "Civic Opportunity Density"
-  )
-) +
-  geom_vline(xintercept = 0, linetype = 2, color = "gray50") +
-  labs(
-    title = "Turnout models (Logit)",
-    x = "Logit coefficient estimate",
-    y = NULL
-  ) +
-  theme_minimal(base_size = 12)
-
-p_coef_logit
 
 ggsave(
   filename = "model_plot_logitturnoutmodels.png",
@@ -483,6 +492,67 @@ ggsave(
   height = 6,
   dpi = 300
 )
+
+turnout_models_logit <- list(
+  "Bivariate Logit" = turnout_logit_1,
+  "Logit Regression w/Controls" = turnout_logit_2
+)
+
+coef_logit <- imap_dfr(
+  turnout_models_logit,
+  ~ tidy(.x, conf.int = TRUE) |> mutate(model = .y)
+) |>
+  filter(term %in% c("opc")) |>
+  mutate(
+    term = recode(
+      term,
+      "opc" = "Opportunity structure"
+    ),
+    shape_group = case_when(
+      grepl("Bivariate", model) ~ "Bivariate",
+      grepl("Controls", model) ~ "Controlled"
+    ),
+    model = factor(
+      model,
+      levels = c(
+        "Bivariate Logit",
+        "Logit Regression w/Controls"
+      )
+    )
+  )
+
+p_coef_logit <- ggplot(
+  coef_logit,
+  aes(x = estimate, y = model, shape = shape_group)
+) +
+  geom_point(size = 3, color = "black") +
+  geom_errorbarh(
+    aes(xmin = conf.low, xmax = conf.high),
+    height = 0.2,
+    color = "black"
+  ) +
+  geom_vline(xintercept = 0, linetype = 2, color = "gray50") +
+  facet_wrap(~term, scales = "free_x") +
+  scale_shape_manual(
+    values = c(
+      "Bivariate" = 16,
+      "Controlled" = 15,
+      "Interaction" = 17
+    )
+  ) +
+  labs(
+    title = "Baseline turnout models (Logit)",
+    x = "Logit coefficient estimate",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+
+p_coef_logit
 
 model_agefactor_logit <- glm(
   voted_2024 ~ opc * age_factor + race_factor + gender_factor +
