@@ -1,0 +1,670 @@
+---
+title: "CivicDensityAppendixFile"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(janitor)
+library(here)
+library(haven)
+library(modelsummary)
+library(ggeffects)
+library(margins)
+library(scales)
+library(nnet)
+library(broom)
+library(tigris)
+library(marginaleffects)
+```
+
+```{r Step 0: data ingestion, include=TRUE}
+cmps_merged <- read_csv(here("cmps_merged_civicorgdata_2024.csv"))
+
+#Create Control Variables
+# Create other factor variables
+cmps_merged$gender_factor <- factor(cmps_merged$s14, 
+                                   levels = 1:3,
+                                   labels = c("Man", "Woman", "Non-binary"))
+
+cmps_merged$race_factor <- factor(cmps_merged$qraceid,
+                                 levels = 1:6,
+                                 labels = c("White",
+                                           "Latino", 
+                                           "Black",
+                                           "Asian",
+                                           "Native American",
+                                           "MENA"))
+
+cmps_merged$income_factor <- factor(cmps_merged$hhinc, 
+                                   levels = 1:5,
+                                   labels = c("Less than $39k", "$40k-$59k", 
+                                             "$60k-$99k", "$100k+", "Don't know"))
+
+cmps_merged$income_ordinal <- ifelse(cmps_merged$s20 == 13, NA, cmps_merged$s20)
+
+cmps_merged$income_c <- cmps_merged$income_ordinal - mean(cmps_merged$income_ordinal, na.rm = TRUE)
+
+
+cmps_merged$agenum <- 2024 - cmps_merged$s2
+
+cmps_merged$age_c <- cmps_merged$agenum - mean(
+  cmps_merged$agenum,
+  na.rm = TRUE
+)
+
+cmps_merged$education_factor <- factor(cmps_merged$s17, 
+                                      levels = 1:7,
+                                      labels = c("Grades 1-8", "Some high school", 
+                                                "High school graduate or GED", "Some college",
+                                                "Associates, 2-year degree", "Bachelors, 4-year degree",
+                                                "Post-graduate degree"))
+
+cmps_merged$age_factor <- factor(cmps_merged$agecat, 
+                                levels = 1:5,
+                                labels = c("16-17 yrs", "18-29 yrs", "30-44 yrs", 
+                                          "45-64 yrs", "65+ yrs"))
+
+cmps_merged$region_factor <- factor(cmps_merged$region, 
+                                   levels = 1:4,
+                                   labels = c("Midwest", "Northeast", "South", "West"))
+
+cmps_merged$urban_factor <- factor(cmps_merged$s24, 
+                                  levels = 1:5,
+                                  labels = c("Large urban area", "Large suburb near large city",
+                                            "Small suburb near small town or city", 
+                                            "Small town or small city", "Rural area"))
+
+cmps_merged$pid7_c <- cmps_merged$pid7 - mean(cmps_merged$pid7, na.rm = TRUE)
+
+cmps_merged$q25b <- max(cmps_merged$q25b, na.rm = TRUE) + min(cmps_merged$q25b, na.rm = TRUE) - cmps_merged$q25b
+
+# Create binary outcome: 1 = responded "1" (optimistic), 0 = otherwise
+cmps_merged$q30_optim <- ifelse(cmps_merged$q30 == 1, 1,
+                          ifelse(is.na(cmps_merged$q30), NA, 0))
+
+# Create binary outcome: 1 = responded "2", 0 = otherwise
+cmps_merged$q30_pess <- ifelse(cmps_merged$q30 == 2, 1,
+                         ifelse(is.na(cmps_merged$q30), NA, 0))
+
+```
+
+
+```{r Step 1: Initial Models that Aren't in the Main Text, include = TRUE}
+#Logistic Regression Models and Table
+## Base Bivariate Logistic Model
+turnout_logit_1 <- glm(
+  voted_2024 ~ opc,
+  family = binomial(link = "logit"),
+  data = cmps_merged
+)
+summary(turnout_logit_1)
+
+##Logistic Model with Printed Controls
+turnout_logit_2 <- glm(
+  voted_2024 ~ opc + age_c + race_factor + gender_factor +
+    income_c + pid7_c,
+  family = binomial(link = "logit"),
+  data = cmps_merged
+)
+summary(turnout_logit_2)
+
+## Logistic Model With Fuller Set of Controls
+turnout_logit_full <- glm(
+  voted_2024 ~ opc * age_c + race_factor + gender_factor +
+    income_c + education_factor + region_factor +
+    urban_factor + pid7_c,
+  family = binomial(link = "logit"),
+  data = cmps_merged
+)
+
+## OLS Model with Fuller Set of Controls 
+#Controlled Model - Robustness Check
+model_vote_2024_controlled <- lm(voted_2024 ~ opc + race_factor + gender_factor + income_ordinal + 
+                               education_factor + age_c + region_factor + urban_factor + pid7, 
+                               data = cmps_merged)
+summary(model_vote_2024_controlled)
+
+
+#Interaction Model with Fuller Set of Controls
+model_2024_interaction_full <- lm(voted_2024 ~ opc * age_c + race_factor + gender_factor + 
+                            income_ordinal + education_factor + region_factor + 
+                            urban_factor + pid7, data = cmps_merged)
+summary(model_2024_interaction_full)
+
+#Logistic Regression of Interaction Model
+## Logistic Version
+turnout_logit_3 <- glm(
+  voted_2024 ~ opc * age_c + race_factor + gender_factor +
+    income_c + pid7_c,
+  family = binomial(link = "logit"),
+  data = cmps_merged
+)
+summary(turnout_logit_3)
+
+#Create Logistic Regression Comparison Table
+table_comparison_turnout_logistic <- modelsummary(
+  list(
+    "Bivariate Model" = turnout_logit_1,
+    "Model with Controls" = turnout_logit_2
+  ),
+  output = "table_comparison_turnout_logistic.png",
+  stars = TRUE,
+  coef_map = c(
+    "opc" = "Civic Density",
+    "age_c" = "Age (years, centered)",
+    "race_factorLatino" = "Latino (vs. White)",
+    "race_factorBlack" = "Black (vs. White)",
+    "race_factorAsian" = "Asian (vs. White)",
+    "gender_factorWoman" = "Woman (vs. man)",
+    "gender_factorNon-binary" = "Non-binary (vs. man)",
+    "income_c" = "Household income (centered)",
+    "pid7_c" = "Party identification (more Republican, centered)"
+  ),
+  coef_omit = "Intercept"
+)
+```
+
+
+```{r Step 1.5: Restricting the Sample to just Those Who Are Fully Sure About Voting in 2024, include=TRUE}
+cmps_merged$voted_2024_sure <- as.numeric(cmps_merged$q12 == 4)
+
+
+#Naive Model on Voter Turnout
+model_vote_2024_sure <- lm(voted_2024_sure ~ opc, data = cmps_merged)
+summary(model_vote_2024_sure)
+
+#Logistic Regression Version
+turnout_logit_1_sure <- glm(
+  voted_2024_sure ~ opc,
+  family = binomial(link = "logit"),
+  data = cmps_merged
+)
+
+summary(turnout_logit_1_sure)
+
+#Controlled Model - Robustness Check
+model_vote_2024_controlled_sure <- lm(voted_2024_sure ~ opc + race_factor + gender_factor + income_ordinal + 
+                               education_factor + age_c + region_factor + urban_factor + pid7, 
+                               data = cmps_merged)
+summary(model_vote_2024_controlled_sure)
+
+## Logistic Version
+turnout_logit_full_sure <- glm(
+  voted_2024_sure ~ opc * age_c + race_factor + gender_factor +
+    income_ordinal + education_factor + region_factor +
+    urban_factor + pid7,
+  family = binomial(link = "logit"),
+  data = cmps_merged
+)
+
+summary(turnout_logit_full_sure)
+
+#Model That includes Less Covariates Due to Model Overfit
+model_minimal_sure <- lm(voted_2024_sure ~ opc + age_c + race_factor + gender_factor + 
+                   income_factor + pid7, data = cmps_merged)
+summary(model_minimal_sure)
+
+
+## Logistic Version
+turnout_logit_2_sure <- glm(
+  voted_2024_sure ~ opc + age_c + race_factor + gender_factor +
+    income_factor + pid7,
+  family = binomial(link = "logit"),
+  data = cmps_merged
+)
+
+summary(turnout_logit_2_sure)
+
+#Model that Interacts Civic Opportunity with Age
+model_2024_interaction_sure <- lm(voted_2024_sure ~ opc * age_c + race_factor + gender_factor + 
+                            income_ordinal + education_factor + region_factor + 
+                            urban_factor + pid7, data = cmps_merged)
+summary(model_2024_interaction_sure)
+
+## Logistic Version
+turnout_logit_3_sure <- glm(
+  voted_2024_sure ~ opc * age_c + race_factor + gender_factor +
+    income_factor + pid7,
+  family = binomial(link = "logit"),
+  data = cmps_merged
+)
+
+summary(turnout_logit_3_sure)
+
+#As a robustness check, we re-estimated the turnout models using a stricter outcome that coded only respondents who reported being certain they voted in 2024 as voters. Across these models, civic opportunity structure remained positively associated with turnout, indicating that the main relationship is not driven by respondents with uncertain self-reports. At the same time, the interaction between opportunity structure and age became smaller and statistically insignificant across specifications. This suggests that while the positive association between local civic opportunity structure and turnout is robust, evidence that this relationship is especially strong among younger respondents is more sensitive to how turnout is operationalized (CHATGPT)
+```
+
+```{r Step 3: Alternative Modeling Specifications on Competing Explanations, include=TRUE}
+#Optimism/Pessimism
+# Logistic regression with age interaction
+model_optimism <- glm(q30_optim ~ opc * age_c + race_factor + gender_factor +
+                        income_factor + education_factor + region_factor +
+                        urban_factor + pid7,
+                      data = cmps_merged,
+                      family = binomial(link = "logit"))
+
+summary(model_optimism)
+
+# Logistic regression with interaction
+model_pess <- glm(q30_pess ~ opc * age_c + race_factor + gender_factor +
+                    income_factor + education_factor + region_factor +
+                    urban_factor + pid7,
+                  data = cmps_merged,
+                  family = binomial(link = "logit"))
+
+summary(model_pess)
+
+#Optimism on Controlled Model
+model_young_optimism_minimal <- lm(q30 ~ opc + race_factor + gender_factor + 
+                   income_ordinal + pid7, data = young_sample)
+
+model_optimism_interaction_minimal <- lm(q30 ~ opc * age_c + race_factor + gender_factor + 
+                                income_ordinal + pid7, data = cmps_merged)
+
+summary(model_young_optimism_minimal)
+summary(model_optimism_interaction_minimal)
+
+# Full interaction model
+model_political_interest_interaction_age_centered <- lm(q25b ~ opc * age_c + race_factor + gender_factor + 
+                                          income_factor + education_factor + region_factor + 
+                                          urban_factor + pid7, data = cmps_merged)
+summary(model_political_interest_interaction_age_centered)
+
+#Interacting Between Optimism and Political Attentiveness
+cor(cmps_merged$q25b, cmps_merged$q30, use = "complete.obs")
+
+# 2. Does controlling for political interest eliminate the civic density effect on economic optimism?
+model_economic_controlled <- lm(q30_optim ~ opc + q25b + race_factor + gender_factor + 
+                               income_factor + education_factor + region_factor + 
+                               urban_factor + pid7, data = young_sample)
+
+# 3. Does controlling for economic optimism eliminate the civic density effect on political interest?
+model_political_controlled <- lm(q25b ~ opc + q30_optim + race_factor + gender_factor + 
+                                income_factor + education_factor + region_factor + 
+                                urban_factor + pid7, data = young_sample)
+
+summary(model_economic_controlled)
+summary(model_political_controlled)
+
+
+# Political Interest
+# Option A: Focus on young people (say, under 40) and test civic density effect on optimism
+young_sample <- subset(cmps_merged, agenum < 40)
+
+model_young_political_interest <- lm(q25b ~ opc + race_factor + gender_factor + 
+                                    income_factor + education_factor + region_factor + 
+                                    urban_factor + pid7, data = young_sample)
+
+
+# Full interaction model
+model_political_interest_interaction <- lm(q25b ~ opc * age_c + race_factor + gender_factor + 
+                                          income_factor + education_factor + region_factor + 
+                                          urban_factor + pid7, data = cmps_merged)
+
+summary(model_young_political_interest)
+summary(model_political_interest_interaction)
+
+#Create Comparison Table (with just young sample models)
+table_comparison_mechanisms <- modelsummary(
+  list(
+    "Economic Pessimism" = model_young_pessimism_minimal,
+    "Trust in Government" = model_gov_trust_young_minimal,
+    "Political Interest" = minimal_young_political_interest
+  ),
+  output = "table_comparison_mechanism_youngsample.png",
+  stars = TRUE,
+  coef_map = c(
+    "opc" = "Civic Density",
+    "age_c" = "Age (years, centered)",
+    "race_factorLatino" = "Latino (vs. White)",
+    "race_factorBlack" = "Black (vs. White)",
+    "race_factorAsian" = "Asian (vs. White)",
+    "gender_factorWoman" = "Woman (vs. man)",
+    "gender_factorNon-binary" = "Non-binary (vs. man)",
+    "income_c" = "Household income (centered)",
+    "pid7_c" = "Party identification (more Republican, centered)"
+  ),
+  coef_omit = "Intercept"
+)
+```
+
+```{r Step 4: Alternative Plots, include=TRUE}
+# Creation of Income Gradient Plot to Show Differential Impact
+# of Civic Density Across Income Groups
+
+model_incomefactor <- lm(
+  voted_2024 ~ opc * income_factor + race_factor + gender_factor +
+    age_c + pid7_c,
+  data = cmps_merged
+)
+
+model.frame(model_incomefactor)$income_factor |> levels()
+
+income_levels_used <- levels(model.frame(model_incomefactor)$income_factor)
+
+me_incomefactor <- slopes(
+  model_incomefactor,
+  variables = "opc",
+  newdata = datagrid(income_factor = income_levels_used),
+  type = "response"
+)
+
+income_gradient_plot <- ggplot(
+  me_incomefactor,
+  aes(x = income_factor, y = estimate)
+) +
+  geom_point(
+    size = 3,
+    color = "black"
+  ) +
+  geom_errorbar(
+    aes(ymin = conf.low, ymax = conf.high),
+    width = 0.15,
+    color = "black"
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = 2,
+    color = "gray50"
+  ) +
+  labs(
+    x = "Household income",
+    y = "Marginal effect of civic density on predicted turnout",
+    title = "Effect of Civic Density by Income"
+  ) +
+  theme_minimal(base_size = 12)
+
+income_gradient_plot
+
+ggsave(
+  filename = "incomegradientplot.png",
+  plot = income_gradient_plot,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+```
+
+```{r Step 5: Checking if the Relationship Looks Different Across Race and Gender, include=TRUE}
+#Race
+model_turnout_race_interaction_ols <- lm(
+  voted_2024 ~ opc * race_factor + age_c + gender_factor + income_ordinal + pid7,
+  data = cmps_merged
+)
+
+model_turnout_race_interaction_logit <- glm(
+  voted_2024 ~ opc * race_factor + age_c + gender_factor + income_ordinal + pid7,
+  family = binomial(link = "logit"),
+  data = cmps_merged
+)
+
+summary(model_turnout_race_interaction_ols)
+summary(model_turnout_race_interaction_logit)
+
+#Gender
+model_turnout_gender_interaction_ols <- lm(
+  voted_2024 ~ opc * gender_factor + age_c + race_factor +
+    income_ordinal + pid7,
+  data = cmps_merged
+)
+
+model_turnout_gender_interaction_logit <- glm(
+  voted_2024 ~ opc * gender_factor + age_c + race_factor +
+    income_ordinal + pid7,
+  family = binomial(link = "logit"),
+  data = cmps_merged
+)
+
+
+summary(model_turnout_gender_interaction_ols)
+summary(model_turnout_gender_interaction_logit)
+```
+
+```{r Step 6: Additional/Alternative Turnout Visualizations, include=TRUE}
+coef_df_interaction <- imap_dfr(
+  list(
+    "Bivariate Model" = model_2024_interaction,
+    "Model Including Controls" = model_2024_interaction_minimal
+  ),
+  ~ tidy(.x, conf.int = TRUE) |> mutate(model = .y)
+) |>
+  filter(term == "opc")
+
+model_comparison_interaction <- ggplot(coef_df_interaction, aes(x = estimate, y = model, shape = model)) +
+  geom_point(size = 3, color = "black") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2, color = "black") +
+  geom_vline(xintercept = 0, linetype = 2, color = "gray50") +
+  scale_shape_manual(values = c(16, 17)) +
+  theme_minimal() +
+  labs(
+    title = "Civic Opportunity Density, Age, and Voter Turnout in the 2024 Election",
+    x = "Coefficient estimate for Civic Density",
+    y = NULL,
+    shape = "Model"
+  ) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank()
+  )
+model_comparison_interaction
+
+ggsave(
+  filename = "model_plot_turnoutmodels_interaction.png",
+  plot = model_comparison_interaction,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+# Define model lists
+turnout_models_ols <- list(
+  "Bivariate OLS" = model_vote_2024,
+  "OLS Regression w/Controls" = model_minimal
+)
+
+coef_ols <- imap_dfr(
+  turnout_models_ols,
+  ~ tidy(.x, conf.int = TRUE) |> mutate(model = .y)
+) |>
+  filter(term %in% c("opc", "opc:age_c")) |>
+  mutate(
+    term = recode(
+      term,
+      "opc" = "Civic Density"
+    ),
+    shape_group = case_when(
+      grepl("Bivariate", model) ~ "Bivariate",
+      grepl("Controls", model) ~ "Controlled"
+    ),
+    model = factor(
+      model,
+      levels = c(
+        "Bivariate OLS",
+        "OLS Regression w/Controls"
+      )
+    )
+  )
+
+p_coef_ols <- ggplot(
+  coef_ols,
+  aes(x = estimate, y = model, shape = shape_group)
+) +
+  geom_point(size = 3, color = "black") +
+  geom_errorbarh(
+    aes(xmin = conf.low, xmax = conf.high),
+    height = 0.2,
+    color = "black"
+  ) +
+  geom_vline(xintercept = 0, linetype = 2, color = "gray50") +
+  facet_wrap(~term, scales = "free_x") +
+  scale_shape_manual(
+    values = c(
+      "Bivariate" = 16,
+      "Controlled" = 15,
+      "Interaction" = 17
+    )
+  ) +
+  labs(
+    title = "Baseline turnout models (OLS)",
+    x = "Coefficient estimate",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+
+p_coef_ols
+
+ggsave(
+  filename = "model_plot_logitturnoutmodels.png",
+  plot = p_coef_logit,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+turnout_models_logit <- list(
+  "Bivariate Logit" = turnout_logit_1,
+  "Logit Regression w/Controls" = turnout_logit_2
+)
+
+coef_logit <- imap_dfr(
+  turnout_models_logit,
+  ~ tidy(.x, conf.int = TRUE) |> mutate(model = .y)
+) |>
+  filter(term %in% c("opc")) |>
+  mutate(
+    term = recode(
+      term,
+      "opc" = "Opportunity structure"
+    ),
+    shape_group = case_when(
+      grepl("Bivariate", model) ~ "Bivariate",
+      grepl("Controls", model) ~ "Controlled"
+    ),
+    model = factor(
+      model,
+      levels = c(
+        "Bivariate Logit",
+        "Logit Regression w/Controls"
+      )
+    )
+  )
+
+p_coef_logit <- ggplot(
+  coef_logit,
+  aes(x = estimate, y = model, shape = shape_group)
+) +
+  geom_point(size = 3, color = "black") +
+  geom_errorbarh(
+    aes(xmin = conf.low, xmax = conf.high),
+    height = 0.2,
+    color = "black"
+  ) +
+  geom_vline(xintercept = 0, linetype = 2, color = "gray50") +
+  facet_wrap(~term, scales = "free_x") +
+  scale_shape_manual(
+    values = c(
+      "Bivariate" = 16,
+      "Controlled" = 15,
+      "Interaction" = 17
+    )
+  ) +
+  labs(
+    title = "Baseline turnout models (Logit)",
+    x = "Logit coefficient estimate",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+
+p_coef_logit
+
+
+
+#Predicted Probabilities Plot 
+pred_turnout <- ggpredict(
+  turnout_logit_full,
+  terms = c("opc", "age_c [-20,0,20]")
+)
+
+plot(pred_turnout) +
+  labs(
+    x = "Civic opportunity structure (opc)",
+    y = "Predicted probability of voting",
+    color = "Age (mean-centered)"
+  ) +
+  theme_minimal()
+
+
+slopes_turnout <- slopes(
+  turnout_logit_full,
+  variables = "opc",
+  newdata = datagrid(age_c = seq(min(cmps_merged$age_c, na.rm = TRUE),
+                                 max(cmps_merged$age_c, na.rm = TRUE),
+                                 by = 1)),
+  type = "response"
+)
+
+age_predictedpr_plot <- ggplot(slopes_turnout, aes(x = age_c, y = estimate)) +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(
+    x = "Age (mean-centered)",
+    y = "Marginal effect of opc on Pr(voting)"
+  ) +
+  theme_minimal()
+
+ggsave(
+  filename = "predictedplotonage.png",
+  plot = age_predictedpr_plot,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+slopes_attn <- slopes(
+  model_political_interest_interaction,  # whatever object name you used
+  variables = "opc",
+  newdata = datagrid(age_c = seq(min(cmps_merged$age_c, na.rm = TRUE),
+                                 max(cmps_merged$age_c, na.rm = TRUE),
+                                 by = 1))
+)
+
+polinterest_predictedpr_plot <- ggplot(slopes_attn, aes(x = age_c, y = estimate)) +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(
+    x = "Age (mean-centered)",
+    y = "Marginal effect of civic density on political interest"
+  ) +
+  theme_minimal()
+
+ggsave(
+  filename = "politicalinterest_age_interaction_plot.png",
+  plot = polinterest_predictedpr_plot,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+table_comparison_interest <- modelsummary(list(
+  "Respondents Under 40" = model_young_political_interest,
+  "Interaction Model with Full Sample" = model_political_interest_interaction,
+  "Model with Less Covariates" = minimal_political_interest_interaction
+  ), output = "table_comparison_interest.html", stars = TRUE, coef_map = c("opc" = "Civic Opportunity Score", "race_factorAsian" = "Asian", "race_factorLatino" = "Latino", "race_factorBlack" = "Black", "agenum" = "Age", "income_ordinal" = "Income", "pid7" = "Partisan Identification", "opc:agenum" = "Age X Political Interest Interaction Effect"), coef_omit = "Intercept")
+```
