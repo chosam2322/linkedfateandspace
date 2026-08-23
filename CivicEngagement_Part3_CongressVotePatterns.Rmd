@@ -1,5 +1,0 @@
----
-title: "CivicEngagement_Part3_CongressVotePatterns"
-output: html_document
----
-
