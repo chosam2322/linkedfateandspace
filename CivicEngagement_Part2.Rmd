@@ -297,6 +297,7 @@ model_gov_trust_interaction <- lm(q72 ~ opc * age_c+ race_factor + gender_factor
 # Model 3: Revised Model
 model_gov_trust_young_minimal <- lm(q72 ~ opc + race_factor + gender_factor + 
                                 income_ordinal + pid7, data = young_sample)
+
 model_gov_trust_interaction_minimal <- lm(q72 ~ opc * age_c + race_factor + gender_factor + 
                                 income_ordinal + pid7, data = cmps_merged)
 
