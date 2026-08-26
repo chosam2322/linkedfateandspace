@@ -668,3 +668,134 @@ table_comparison_interest <- modelsummary(list(
   "Model with Less Covariates" = minimal_political_interest_interaction
   ), output = "table_comparison_interest.html", stars = TRUE, coef_map = c("opc" = "Civic Opportunity Score", "race_factorAsian" = "Asian", "race_factorLatino" = "Latino", "race_factorBlack" = "Black", "agenum" = "Age", "income_ordinal" = "Income", "pid7" = "Partisan Identification", "opc:agenum" = "Age X Political Interest Interaction Effect"), coef_omit = "Intercept")
 ```
+
+```{r Step 7: Additional Models on Midterm and 2020 Voting, include=TRUE}
+cmps_merged$voted_2024 <- as.numeric(cmps_merged$q12 == 3 | cmps_merged$q12 == 4)
+cmps_merged$voted_2022 <- as.numeric(cmps_merged$q13 == 3 | cmps_merged$q13 == 4)
+cmps_merged$voted_2020 <- as.numeric(cmps_merged$q14 == 3 | cmps_merged$q14 == 4)
+cmps_merged$voted_2018 <- as.numeric(cmps_merged$q15 == 3 | cmps_merged$q15 == 4)
+cmps_merged$voted_both <- as.numeric((cmps_merged$q12 == 3 | cmps_merged$q12 == 4) & 
+                                    (cmps_merged$q14 == 3 | cmps_merged$q14 == 4))
+cmps_merged$voted_all <- as.numeric((cmps_merged$q12 == 3 | cmps_merged$q12 == 4) & 
+                                    (cmps_merged$q14 == 3 | cmps_merged$q14 == 4) &
+                                    (cmps_merged$q13 == 3 | cmps_merged$q13 == 4) & 
+                                    (cmps_merged$q15 == 3 | cmps_merged$q15 == 4))
+
+
+#Models for Self-Reported Vote in Different Election Cycles
+model_vote_2024 <- lm(voted_2024 ~ opc, data = cmps_merged)
+summary(model_vote_2024)
+
+model_vote_2022 <- lm(voted_2022  ~ opc, data = cmps_merged)
+summary(model_vote_2022)
+
+model_vote_2020 <- lm(voted_2020 ~ opc, data = cmps_merged)
+summary(model_vote_2020)
+
+model_vote_2018 <- lm(voted_2018 ~ opc, data = cmps_merged)
+summary(model_vote_2018)
+
+model_vote_both <- lm(voted_both ~ opc, data = cmps_merged)
+summary(model_vote_both)
+
+model_vote_all <- lm(voted_all ~ opc, data = cmps_merged)
+summary(model_vote_all)
+
+
+#Model with Multiple Control Variables 
+model_vote_2024_controlled <- lm(voted_2024 ~ opc + race_factor + gender_factor + income_c + 
+                               education_factor + age_c + region_factor + urban_factor + pid7_c, 
+                               data = cmps_merged)
+summary(model_vote_2024_controlled)
+
+
+model_vote_2022_controlled <- lm(voted_2022 ~ opc + race_factor + gender_factor + income_c + 
+                               education_factor + age_c + region_factor + urban_factor + pid7_c, 
+                               data = cmps_merged)
+summary(model_vote_2022_controlled)
+
+
+model_vote_2020_controlled <- lm(voted_2020 ~ opc + race_factor + gender_factor + income_c + 
+                               education_factor + age_c + region_factor + urban_factor + pid7_c, 
+                               data = cmps_merged)
+summary(model_vote_2020_controlled)
+
+model_vote_2018_controlled <- lm(voted_2018 ~ opc + race_factor + gender_factor + income_c + 
+                               education_factor + age_c + region_factor + urban_factor + pid7_c, 
+                               data = cmps_merged)
+summary(model_vote_2018_controlled)
+
+
+model_vote_both_controlled <- lm(voted_both ~ opc + race_factor + gender_factor + income_c + 
+                               education_factor + age_c + region_factor + urban_factor + pid7_c, 
+                               data = cmps_merged)
+summary(model_vote_both_controlled)
+
+model_vote_all_controlled <- lm(voted_all ~ opc + race_factor + gender_factor + income_c + 
+                               education_factor + age_c + region_factor + urban_factor + pid7_c, 
+                               data = cmps_merged)
+summary(model_vote_all_controlled)
+
+model_comparison_turnout <- modelplot(
+  list(
+    "Basic Model" = model_vote_2024,
+    "Model for Voting in 2020 and 2024" = model_vote_both,
+    "Model with Controls for 2024" = model_vote_2024_controlled,
+    "Model with Controls for 2022" = model_vote_2022_controlled,
+    "Model with Controls for 2020" = model_vote_2020_controlled,
+    "Model with Controls for 2018" = model_vote_2018_controlled,
+    "Model with Controls for Voting in Both Elections" = model_vote_all_controlled
+  ),
+  coef_map = c("opc" = "Civil Society Density"),
+  coef_omit = "Intercept",
+) +
+  theme_minimal() +
+  labs(title = "Civic Engagement Effect on Self-Reported Voter Turnout in Elections from 2018-2024")
+
+model_comparison_turnout
+
+
+
+#Cumulative Voting with Age Interaction
+model_2024_interaction <- lm(voted_2024 ~ opc * age_c + race_factor + gender_factor + 
+                            income_c + education_factor + region_factor + 
+                            urban_factor + pid7_c, data = cmps_merged)
+
+model_2022_interaction <- lm(voted_2022 ~ opc * age_c + race_factor + gender_factor + 
+                            income_c + education_factor + region_factor + 
+                            urban_factor + pid7_c, data = cmps_merged)
+
+model_2020_interaction <- lm(voted_2020 ~ opc * age_c + race_factor + gender_factor + 
+                            income_c + education_factor + region_factor + 
+                            urban_factor + pid7_c, data = cmps_merged)
+
+model_both_interaction <- lm(voted_both ~ opc * age_c + race_factor + gender_factor + 
+                            income_c + education_factor + region_factor + 
+                            urban_factor + pid7_c, data = cmps_merged)
+
+model_2018_interaction <- lm(voted_2018 ~ opc * age_c + race_factor + gender_factor + 
+                            income_c + education_factor + region_factor + 
+                            urban_factor + pid7_c, data = cmps_merged)
+
+
+model_all_interaction <- lm(voted_all ~ opc * age_c + race_factor + gender_factor + 
+                            income_c + education_factor + region_factor + 
+                            urban_factor + pid7_c, data = cmps_merged)
+
+model_cumulative_age_interaction <- modelplot(
+  list(
+    "Model for Voting in 2020 and 2024" = model_both_interaction,
+    "Model with Controls for 2024" = model_2024_interaction,
+    "Model with Controls for 2022" = model_2022_interaction,
+    "Model with Controls for 2020" = model_2020_interaction,
+    "Model with Controls for 2018" = model_2018_interaction,
+    "Model with Controls for Voting in Both Elections" = model_all_interaction
+  ),
+  coef_map = c("opc" = "Civil Society Density", "opc:age_c" = "Interaction Effect on Age and Civic Density"),
+  coef_omit = "Intercept",
+) +
+  theme_minimal() +
+  labs(title = "Interaction Effect of Age and Civic Density in Elections from 2018-2024")
+
+model_cumulative_age_interaction
+```
