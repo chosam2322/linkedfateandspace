@@ -3,6 +3,7 @@
 *.dta
 *.rds
 *.tsv
+00_rawdata/
 .DS_Store
 
 # Version-controlled tidy data
