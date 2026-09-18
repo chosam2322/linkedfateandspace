@@ -1,8 +1,18 @@
-# Data files - keep local only
+# Local/raw data files
 *.csv
 *.dta
 *.rds
+*.tsv
 .DS_Store
+
+# Version-controlled tidy data
+!01_tidydata/
+!01_tidydata/*.csv
+
+# Quarto / rendered presentation support files
+*_files/
+
+# Other local/generated data
 **/dataverse_files*/
 **/*selected*/
 **/*Primary*Samples*/
@@ -11,5 +21,11 @@
 *.shx
 *.dbf
 *.prj
+
+# RStudio/local files
 .Rproj.user
+.RDataTmp
+
+# Presentation render log
 WellesleyPoliSciPresentation0426.log
+
